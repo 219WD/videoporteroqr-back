@@ -138,7 +138,7 @@
                 // 6. Unirse a la sala
                 socket.emit("join-room", { roomId, role: "guest" });
 
-                // ✅ NUEVO: Enviar notificación automática al host
+                // ✅ CORREGIDO: Enviar notificación al host usando call-host
                 await sendNotificationToHost();
 
                 // 7. Iniciar WebRTC después de 2 segundos
@@ -150,7 +150,7 @@
             }
         }
 
-        // ✅ NUEVA FUNCIÓN: Obtener información del host
+        // ✅ FUNCIÓN: Obtener información del host
         async function getHostInfo(qrCode) {
             try {
                 console.log("🔍 Buscando información del host para QR:", qrCode);
@@ -161,8 +161,8 @@
                 }
                 
                 const data = await response.json();
-                hostId = data.hostId;
-                console.log("✅ Host encontrado:", data.hostName, "ID:", hostId);
+                hostId = data.host.id; // ✅ CORREGIDO: data.host.id en lugar de data.hostId
+                console.log("✅ Host encontrado:", data.host.name, "ID:", hostId);
                 
             } catch (error) {
                 console.error("❌ Error obteniendo información del host:", error);
@@ -170,7 +170,7 @@
             }
         }
 
-        // ✅ NUEVA FUNCIÓN: Enviar notificación al host
+        // ✅ CORREGIDO: Enviar notificación al host usando call-host
         async function sendNotificationToHost() {
             if (!hostId) {
                 console.log("❌ No se pudo obtener hostId, saltando notificación");
@@ -184,7 +184,7 @@
                 notificationStatus.style.display = 'block';
                 notificationStatus.textContent = "🔔 Notificando al host...";
                 
-                // Enviar notificación via Socket.io
+                // ✅ CORREGIDO: Usar call-host en lugar de call-offer para notificaciones
                 socket.emit('call-host', {
                     hostId: hostId,
                     call: {
@@ -194,11 +194,11 @@
                         hostId: hostId,
                         createdAt: new Date().toISOString(),
                         status: 'pending',
-                        isWebGuest: true // Identificar que viene de la web
+                        isWebGuest: true
                     }
                 });
 
-                console.log("✅ Notificación enviada al host via Socket.io");
+                console.log("✅ Notificación enviada al host via Socket.io - call-host");
 
                 // También enviar notificación via API (como backup)
                 try {
