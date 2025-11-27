@@ -1,4 +1,4 @@
-// websocket-server.js - MEJORADO CON WEBRTC COMPLETO
+// websocket-server.js - VERSIÓN COMPLETA CON NOTIFICACIONES EN TIEMPO REAL
 const socketIo = require('socket.io');
 
 let io;
@@ -13,11 +13,56 @@ function initializeWebSocket(server) {
 
   const rooms = new Map();
   const userSocketMap = new Map();
+  const hostRooms = new Map(); // Mapa para hosts y sus salas de notificación
 
   io.on('connection', (socket) => {
     console.log('🔌 Usuario conectado:', socket.id);
 
-    // ✅ NUEVO: Unirse a sala simple (para la página web)
+    // ✅ HOST: Unirse para recibir notificaciones de llamadas
+    socket.on('host-join', (data) => {
+      const { hostId } = data;
+      console.log('🏠 Host unido a notificaciones:', hostId);
+      
+      // Unir el socket a la sala del host
+      socket.join(`host-${hostId}`);
+      hostRooms.set(hostId.toString(), socket.id);
+      
+      console.log(`✅ Host ${hostId} listo para recibir notificaciones`);
+    });
+
+    // ✅ GUEST: Llamar al host - NOTIFICACIÓN EN TIEMPO REAL
+    socket.on('call-host', (data) => {
+      const { hostId, call } = data;
+      console.log('🔔 Llamada al host:', hostId, 'Call ID:', call._id);
+      
+      // Emitir a todos los sockets del host
+      io.to(`host-${hostId}`).emit('call-incoming', call);
+      console.log(`📢 Notificación enviada al host ${hostId}`);
+    });
+
+    // ✅ HOST: Responder a la llamada
+    socket.on('call-response', (data) => {
+      const { callId, response } = data;
+      console.log('📞 Respuesta del host:', callId, response);
+      
+      // Emitir respuesta a todos (el guest estará escuchando)
+      io.emit('call-response', {
+        callId,
+        response
+      });
+      console.log(`📢 Respuesta del host enviada para call ${callId}: ${response}`);
+    });
+
+    // ✅ USUARIO: Conectarse para videollamadas generales
+    socket.on('user-connected', (data) => {
+      const { userId, userType } = data;
+      console.log(`👤 Usuario ${userId} (${userType}) conectado`);
+      
+      socket.join(`user-${userId}`);
+      userSocketMap.set(userId.toString(), socket.id);
+    });
+
+    // ✅ SALA SIMPLE: Para la página web
     socket.on('join-room', (data) => {
       const { roomId, role } = data;
       console.log(`🎯 ${role} uniéndose a sala: ${roomId}`);
@@ -26,36 +71,56 @@ function initializeWebSocket(server) {
       socket.to(roomId).emit('user-joined', { role });
     });
 
-    // ✅ NUEVO: Manejar oferta WebRTC del guest
+    // ✅ WEBRTC: Oferta del guest
     socket.on('call-offer', async (data) => {
-      const { offer, roomId } = data;
+      const { offer, roomId, hostId, guestId } = data;
       console.log(`📨 Offer WebRTC recibido en sala ${roomId}`, offer.type);
       
-      // Reenviar la oferta al host
-      socket.to(roomId).emit('call-offer', { 
-        offer,
-        from: socket.id 
-      });
+      // Reenviar la oferta al host específico
+      if (hostId) {
+        io.to(`user-${hostId}`).emit('call-offer', { 
+          offer,
+          from: socket.id,
+          guestId
+        });
+      } else {
+        // O reenviar a toda la sala
+        socket.to(roomId).emit('call-offer', { 
+          offer,
+          from: socket.id 
+        });
+      }
     });
 
-    // ✅ NUEVO: Manejar answer del host
+    // ✅ WEBRTC: Answer del host
     socket.on('answer', (data) => {
-      const { answer, roomId } = data;
+      const { answer, roomId, targetUserId } = data;
       console.log(`📨 Answer WebRTC para sala ${roomId}`, answer.type);
       
-      // Reenviar el answer al guest
-      socket.to(roomId).emit('answer', { answer });
+      if (targetUserId) {
+        // Enviar a usuario específico
+        io.to(`user-${targetUserId}`).emit('answer', { answer });
+      } else {
+        // Reenviar el answer a la sala
+        socket.to(roomId).emit('answer', { answer });
+      }
     });
 
-    // ✅ NUEVO: Manejar ICE candidates
+    // ✅ WEBRTC: ICE candidates
     socket.on('ice-candidate', (data) => {
-      const { candidate, to } = data;
-      console.log(`🧊 ICE candidate enviado a: ${to}`);
+      const { candidate, to, targetUserId } = data;
+      console.log(`🧊 ICE candidate enviado`);
       
-      socket.to(to).emit('ice-candidate', { candidate });
+      if (targetUserId) {
+        // Enviar a usuario específico
+        io.to(`user-${targetUserId}`).emit('ice-candidate', { candidate });
+      } else if (to) {
+        // Enviar a sala específica
+        socket.to(to).emit('ice-candidate', { candidate });
+      }
     });
 
-    // ✅ NUEVO: Llamada aceptada por el host
+    // ✅ WEBRTC: Llamada aceptada
     socket.on('call-accepted', (data) => {
       const { roomId } = data;
       console.log(`✅ Llamada aceptada en sala: ${roomId}`);
@@ -63,7 +128,7 @@ function initializeWebSocket(server) {
       socket.to(roomId).emit('call-accepted');
     });
 
-    // ✅ NUEVO: Llamada rechazada por el host
+    // ✅ WEBRTC: Llamada rechazada
     socket.on('call-rejected', (data) => {
       const { roomId } = data;
       console.log(`❌ Llamada rechazada en sala: ${roomId}`);
@@ -71,7 +136,7 @@ function initializeWebSocket(server) {
       socket.to(roomId).emit('call-rejected');
     });
 
-    // Unirse a una sala de videollamada (existente)
+    // ✅ SALA DE VIDEOCALL: Unirse a sala específica
     socket.on('join-call-room', async (data) => {
       const { callId, userId, userRole } = data;
       
@@ -79,7 +144,7 @@ function initializeWebSocket(server) {
       
       // Unirse a la sala
       socket.join(callId);
-      userSocketMap.set(userId.toString(), socket.id); // ✅ Asegurar que userId sea string
+      userSocketMap.set(userId.toString(), socket.id);
       
       // Guardar información de la sala
       if (!rooms.has(callId)) {
@@ -95,14 +160,10 @@ function initializeWebSocket(server) {
       const room = rooms.get(callId);
       
       if (userRole === 'host') {
-        room.host = userId.toString(); // ✅ Asegurar string
-        
-        // ✅ NUEVO: Notificar que el host está listo
+        room.host = userId.toString();
         socket.to(callId).emit('host-ready');
       } else if (userRole === 'guest') {
-        room.guest = userId.toString(); // ✅ Asegurar string
-        
-        // Notificar al host que el guest se unió
+        room.guest = userId.toString();
         socket.to(callId).emit('user-joined', {
           userId,
           userRole,
@@ -124,19 +185,18 @@ function initializeWebSocket(server) {
       }
     });
 
-    // Señales WebRTC - MEJORADO
+    // ✅ SEÑALES WEBRTC GENÉRICAS
     socket.on('webrtc-signal', (data) => {
       const { callId, signal } = data;
       console.log(`📡 Señal WebRTC enviada en sala ${callId}`);
       
-      // Reenviar a todos los demás en la sala
       socket.to(callId).emit('webrtc-signal', {
         signal,
         fromUser: socket.id
       });
     });
 
-    // Toggle de cámara del host
+    // ✅ TOGGLE CÁMARA DEL HOST
     socket.on('toggle-host-camera', (data) => {
       const { callId, enabled } = data;
       const room = rooms.get(callId);
@@ -145,12 +205,11 @@ function initializeWebSocket(server) {
         room.hostCameraEnabled = enabled;
         console.log(`📷 Cámara del host ${enabled ? 'activada' : 'desactivada'} en sala ${callId}`);
         
-        // Notificar al guest
         socket.to(callId).emit('host-camera-toggled', { enabled });
       }
     });
 
-    // Toggle de audio - MEJORADO
+    // ✅ TOGGLE AUDIO
     socket.on('toggle-audio', (data) => {
       const { callId, enabled } = data;
       const room = rooms.get(callId);
@@ -159,7 +218,6 @@ function initializeWebSocket(server) {
         room.audioEnabled = enabled;
         console.log(`🎤 Audio ${enabled ? 'activado' : 'desactivado'} en sala ${callId}`);
         
-        // Notificar a todos en la sala
         io.to(callId).emit('audio-toggled', { 
           enabled, 
           userId: socket.id,
@@ -168,27 +226,59 @@ function initializeWebSocket(server) {
       }
     });
 
-    // Finalizar llamada - MEJORADO
+    // ✅ FINALIZAR LLAMADA
     socket.on('end-call', (data) => {
       const { callId, roomId } = data;
       const targetRoom = callId || roomId;
       
       console.log(`📞 Llamada finalizada en sala ${targetRoom}`);
       
-      // Notificar a todos en la sala
       io.to(targetRoom).emit('call-ended');
       
-      // Limpiar sala si existe en el Map
       if (rooms.has(targetRoom)) {
         rooms.delete(targetRoom);
       }
     });
 
-    // Manejar desconexión - MEJORADO
-    socket.on('disconnect', () => {
-      console.log('🔌 Usuario desconectado:', socket.id);
+    // ✅ MENSAJES EN TIEMPO REAL
+    socket.on('send-message', (data) => {
+      const { callId, message, sender } = data;
+      console.log(`💬 Mensaje enviado en call ${callId} por ${sender}`);
       
-      // Encontrar y notificar salas donde estaba este usuario
+      socket.to(callId).emit('new-message', {
+        message,
+        sender,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // ✅ VERIFICAR CONEXIÓN DE HOST
+    socket.on('check-host-online', (data) => {
+      const { hostId } = data;
+      const isOnline = hostRooms.has(hostId.toString());
+      
+      socket.emit('host-online-status', {
+        hostId,
+        isOnline
+      });
+      
+      console.log(`🔍 Verificación de host ${hostId}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+    });
+
+    // ✅ MANEJAR DESCONEXIÓN
+    socket.on('disconnect', (reason) => {
+      console.log('🔌 Usuario desconectado:', socket.id, 'Razón:', reason);
+      
+      // Limpiar host rooms
+      for (const [hostId, socketId] of hostRooms.entries()) {
+        if (socketId === socket.id) {
+          hostRooms.delete(hostId);
+          console.log(`🏠 Host ${hostId} desconectado`);
+          break;
+        }
+      }
+      
+      // Limpiar salas de videollamada
       for (const [callId, room] of rooms.entries()) {
         const userRole = room.host === socket.id ? 'host' : 
                         room.guest === socket.id ? 'guest' : null;
@@ -199,11 +289,9 @@ function initializeWebSocket(server) {
             userRole 
           });
           
-          // Limpiar la referencia del usuario
           if (userRole === 'host') room.host = null;
           else if (userRole === 'guest') room.guest = null;
           
-          // Si la sala queda vacía, limpiarla
           if (!room.host && !room.guest) {
             rooms.delete(callId);
           }
@@ -219,11 +307,78 @@ function initializeWebSocket(server) {
       }
     });
 
-    // ✅ NUEVO: Manejar errores
+    // ✅ MANEJAR ERRORES
     socket.on('error', (error) => {
       console.error('❌ Error en socket:', error);
     });
+
+    // ✅ EVENTO DE PRUEBA/PING
+    socket.on('ping', (data) => {
+      socket.emit('pong', {
+        message: 'Servidor funcionando correctamente',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // ✅ ENVIAR ESTADO INICIAL AL CLIENTE
+    socket.emit('connection-established', {
+      socketId: socket.id,
+      message: 'Conectado al servidor de notificaciones',
+      timestamp: new Date().toISOString()
+    });
+
   });
+
+  // ✅ FUNCIONES DE UTILIDAD PARA EL RESTO DE LA APLICACIÓN
+  
+  // Notificar a un host específico
+  function notifyHost(hostId, event, data) {
+    const hostSocketId = hostRooms.get(hostId.toString());
+    if (hostSocketId) {
+      io.to(hostSocketId).emit(event, data);
+      return true;
+    }
+    return false;
+  }
+
+  // Notificar a un usuario específico
+  function notifyUser(userId, event, data) {
+    const userSocketId = userSocketMap.get(userId.toString());
+    if (userSocketId) {
+      io.to(userSocketId).emit(event, data);
+      return true;
+    }
+    return false;
+  }
+
+  // Verificar si un host está en línea
+  function isHostOnline(hostId) {
+    return hostRooms.has(hostId.toString());
+  }
+
+  // Obtener estadísticas del servidor
+  function getServerStats() {
+    return {
+      totalConnections: io.engine.clientsCount,
+      hostRooms: hostRooms.size,
+      callRooms: rooms.size,
+      userConnections: userSocketMap.size
+    };
+  }
+
+  // ✅ EXPORTAR FUNCIONES DE UTILIDAD
+  io.notifyHost = notifyHost;
+  io.notifyUser = notifyUser;
+  io.isHostOnline = isHostOnline;
+  io.getServerStats = getServerStats;
+
+  console.log('🚀 Servidor WebSocket inicializado correctamente');
+  
+  // ✅ LOG PERIÓDICO DE ESTADÍSTICAS
+  setInterval(() => {
+    const stats = getServerStats();
+    console.log('📊 Estadísticas del servidor:', stats);
+  }, 60000); // Cada minuto
 
   return io;
 }
@@ -235,4 +390,7 @@ function getIO() {
   return io;
 }
 
-module.exports = { initializeWebSocket, getIO };
+module.exports = { 
+  initializeWebSocket, 
+  getIO 
+};
