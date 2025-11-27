@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { authMiddleware, roleGuard } = require('../middleware/auth');
+const User = require('../models/User');
 const DoorbellCall = require('../models/DoorbellCall');
 const { getIO } = require('../websocket-server');
 
@@ -157,8 +158,6 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
   }
 });
 
-// routes/videocall.js - AGREGAR ESTO AL FINAL:
-
 /**
  * Llamada anónima para guest sin registro (SOLO WEB)
  * POST /videocall/anonymous-call
@@ -174,7 +173,7 @@ router.post('/anonymous-call', async (req, res) => {
     }
 
     // Buscar host por QR code
-    const host = await User.findOne({ qrCode });
+    const host = await User.findOne({ qrCode, role: 'host' });
     if (!host) {
       console.log(`❌ Host no encontrado para QR: ${qrCode}`);
       return res.status(404).json({ error: 'Host no encontrado' });
@@ -184,7 +183,7 @@ router.post('/anonymous-call', async (req, res) => {
     const videoCall = await DoorbellCall.create({
       hostId: host._id,
       guestName: guestName,
-      guestEmail: 'anonimo@visitante.com', // Email dummy
+      guestEmail: 'anonimo@visitante.com',
       status: 'pending',
       callType: 'video',
       // NO guestId - porque no hay usuario registrado
@@ -194,10 +193,14 @@ router.post('/anonymous-call', async (req, res) => {
 
     // Notificar al host via WebSocket
     const io = getIO();
-    io.to(host._id.toString()).emit('incoming-video-call', {
-      callId: videoCall._id,
+    io.to(host._id.toString()).emit('call-incoming', {
+      _id: videoCall._id,
       guestName: guestName,
-      isAnonymous: true // ✅ NUEVO: identificar que es llamada anónima
+      guestEmail: 'anonimo@visitante.com',
+      hostId: host._id,
+      createdAt: new Date().toISOString(),
+      status: 'pending',
+      isAnonymous: true
     });
 
     res.json({ 
@@ -212,5 +215,6 @@ router.post('/anonymous-call', async (req, res) => {
     res.status(500).json({ error: 'Error iniciando videollamada' });
   }
 });
+
 
 module.exports = router;

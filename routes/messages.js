@@ -1,8 +1,8 @@
 // routes/messages.js - Crear este nuevo archivo
 const express = require('express');
 const router = express.Router();
-const DoorbellCall = require('../models/DoorbellCall');
 const User = require('../models/User');
+const DoorbellCall = require('../models/DoorbellCall');
 const { authMiddleware, roleGuard } = require('../middleware/auth');
 
 /**

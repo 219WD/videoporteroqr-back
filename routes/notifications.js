@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const DoorbellCall = require('../models/DoorbellCall'); // Necesitarás crear este modelo
+const DoorbellCall = require('../models/DoorbellCall');
 const { authMiddleware, roleGuard } = require('../middleware/auth');
 
 /**

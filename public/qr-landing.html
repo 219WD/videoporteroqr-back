@@ -155,7 +155,7 @@
             try {
                 console.log("🔍 Buscando información del host para QR:", qrCode);
                 
-                const response = await fetch(`/auth/get-host-by-qr?code=${qrCode}`);
+                const response = await fetch(`/auth/host-by-qr/${qrCode}`);
                 if (!response.ok) {
                     throw new Error('Host no encontrado');
                 }

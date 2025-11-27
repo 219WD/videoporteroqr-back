@@ -2,7 +2,9 @@ const express = require('express');
 const router = express.Router();
 const { authMiddleware } = require('../middleware/auth');
 
-// Importar controladores
+// ✅ AÑADIR ESTAS IMPORTACIONES
+const User = require('../models/User');
+const DoorbellCall = require('../models/DoorbellCall');
 const authController = require('../controllers/authController');
 
 /**
@@ -15,38 +17,43 @@ router.post('/register-host', authController.registerHost);
 
 /**
  * Get host info by QR code (para página web)
- * GET /auth/get-host-by-qr?code=XXX
+ * GET /auth/host-by-qr/:qrCode
  */
-router.get('/get-host-by-qr', async (req, res) => {
+router.get('/host-by-qr/:qrCode', async (req, res) => {
   try {
-    const { code } = req.query;
+    const { qrCode } = req.params;
     
-    if (!code) {
-      return res.status(400).json({ error: 'Código QR requerido' });
-    }
-
-    console.log("🔍 Buscando host por QR:", code);
+    console.log("🔍 Buscando host por QR:", qrCode);
     
-    const host = await User.findOne({ qrCode: code, role: 'host' })
-      .select('name email _id');
+    const host = await User.findOne({ qrCode: qrCode, role: 'host' })
+      .select('name email _id qrCode');
     
     if (!host) {
-      console.log("❌ Host no encontrado para QR:", code);
-      return res.status(404).json({ error: 'Host no encontrado' });
+      console.log("❌ Host no encontrado para QR:", qrCode);
+      return res.status(404).json({ 
+        success: false,
+        error: 'Host no encontrado' 
+      });
     }
 
     console.log("✅ Host encontrado:", host.name, "ID:", host._id);
     
     res.json({
       success: true,
-      hostId: host._id,
-      hostName: host.name,
-      hostEmail: host.email
+      host: {
+        id: host._id,
+        name: host.name,
+        email: host.email,
+        qrCode: host.qrCode
+      }
     });
 
   } catch (error) {
     console.error('❌ Error obteniendo host por QR:', error);
-    res.status(500).json({ error: 'Error obteniendo información del host' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Error obteniendo información del host' 
+    });
   }
 });
 
