@@ -155,11 +155,13 @@ function initializeWebSocket(server) {
     socket.on('join-call-room', async (data) => {
       const { callId, userId, userRole } = data;
 
-      console.log(`🎥 Usuario ${userId} (${userRole}) uniéndose a sala ${callId}`);
+      console.log(`🎥 Usuario ${userId || 'anonimo'} (${userRole}) uniéndose a sala ${callId}`);
 
-      // ✅ CORREGIDO: Verificar que userId exista antes de usarlo
+      // ✅ CORREGIDO: Verificar que userId exista
       if (userId) {
         userSocketMap.set(userId.toString(), socket.id);
+      } else {
+        console.log(`⚠️ Usuario anónimo uniéndose a sala ${callId}`);
       }
 
       // Unirse a la sala
