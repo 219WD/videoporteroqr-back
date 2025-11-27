@@ -158,10 +158,7 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
   }
 });
 
-/**
- * Llamada anónima para guest sin registro (SOLO WEB)
- * POST /videocall/anonymous-call
- */
+// routes/videocall.js - CORREGIR el endpoint anonymous-call
 router.post('/anonymous-call', async (req, res) => {
   try {
     const { qrCode, guestName = "Visitante" } = req.body;
@@ -179,14 +176,14 @@ router.post('/anonymous-call', async (req, res) => {
       return res.status(404).json({ error: 'Host no encontrado' });
     }
 
-    // Crear llamada automática SIN guestId (porque es anónimo)
+    // ✅ CORREGIDO: Crear llamada con guestId como null o string vacío
     const videoCall = await DoorbellCall.create({
       hostId: host._id,
+      guestId: null, // ✅ Para llamadas anónimas
       guestName: guestName,
       guestEmail: 'anonimo@visitante.com',
       status: 'pending',
       callType: 'video',
-      // NO guestId - porque no hay usuario registrado
     });
 
     console.log(`🔔 Notificando a host: ${host.name} sobre llamada anónima`);

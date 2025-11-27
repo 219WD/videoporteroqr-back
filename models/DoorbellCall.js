@@ -26,7 +26,8 @@ const doorbellCallSchema = new mongoose.Schema({
   guestId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: false,
+    default: null,
   },
   guestName: {
     type: String,

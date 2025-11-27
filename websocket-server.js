@@ -157,9 +157,13 @@ function initializeWebSocket(server) {
 
       console.log(`🎥 Usuario ${userId} (${userRole}) uniéndose a sala ${callId}`);
 
+      // ✅ CORREGIDO: Verificar que userId exista antes de usarlo
+      if (userId) {
+        userSocketMap.set(userId.toString(), socket.id);
+      }
+
       // Unirse a la sala
       socket.join(callId);
-      userSocketMap.set(userId.toString(), socket.id);
 
       // Guardar información de la sala
       if (!rooms.has(callId)) {
