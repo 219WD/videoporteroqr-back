@@ -28,7 +28,7 @@ exports.registerHost = async (req, res) => {
     });
 
     // ✅ MODIFICADO: Generar URL web en lugar de deep link
-    const qrUrl = `${req.protocol}://${req.get('host')}/qr-landing.html?code=${qrCode}`;
+    const qrUrl = `https://videoporteroqr-back.onrender.com/qr-landing.html?code=${qrCode}`;
     const dataUrl = await QRCode.toDataURL(qrUrl);
     host.qrDataUrl = dataUrl;
     await host.save();
