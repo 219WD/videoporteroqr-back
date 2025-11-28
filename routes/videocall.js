@@ -165,7 +165,6 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
 router.post('/anonymous-call', async (req, res) => {
   try {
     const { qrCode, guestName = "Visitante" } = req.body;
-
     console.log(`🎥 Llamada anónima recibida con QR: ${qrCode}`);
 
     if (!qrCode) {
@@ -179,22 +178,28 @@ router.post('/anonymous-call', async (req, res) => {
       return res.status(404).json({ error: 'Host no encontrado' });
     }
 
-    // ✅ CORREGIDO: Crear llamada con guestId como null o string vacío
+    // ✅ CREAR CALL ID ÚNICO BASADO EN TIMESTAMP + QR
+    const callId = `web-${Date.now()}`;
+    
+    // ✅ CORREGIDO: Crear llamada con callId específico
     const videoCall = await DoorbellCall.create({
+      _id: callId, // ✅ FORZAR EL callId específico
       hostId: host._id,
-      guestId: null, // ✅ Para llamadas anónimas
+      guestId: null,
       guestName: guestName,
       guestEmail: 'anonimo@visitante.com',
       status: 'pending',
       callType: 'video',
+      qrCode: qrCode // Guardar también el QR para referencia
     });
 
     console.log(`🔔 Notificando a host: ${host.name} sobre llamada anónima`);
+    console.log(`🎯 Call ID creado: ${callId}`);
 
-    // Notificar al host via WebSocket
+    // Notificar al host via WebSocket - ✅ ENVIAR EL callId CORRECTO
     const io = getIO();
     io.to(host._id.toString()).emit('call-incoming', {
-      _id: videoCall._id,
+      _id: callId, // ✅ Usar el mismo callId
       guestName: guestName,
       guestEmail: 'anonimo@visitante.com',
       hostId: host._id,
@@ -205,7 +210,8 @@ router.post('/anonymous-call', async (req, res) => {
 
     res.json({
       success: true,
-      callId: videoCall._id,
+      callId: callId, // ✅ Devolver el callId real
+      hostId: host._id,
       hostName: host.name,
       message: 'Llamada iniciada correctamente'
     });

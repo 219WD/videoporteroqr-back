@@ -174,7 +174,9 @@ function initializeWebSocket(server) {
           guest: null,
           hostCameraEnabled: false,
           guestCameraEnabled: true,
-          audioEnabled: true
+          audioEnabled: true,
+          hostSocket: null,    // ✅ NUEVO: Guardar socket IDs
+          guestSocket: null    // ✅ NUEVO: Guardar socket IDs
         });
       }
 
@@ -182,17 +184,30 @@ function initializeWebSocket(server) {
 
       if (userRole === 'host') {
         room.host = userId.toString();
-        socket.to(callId).emit('host-ready');
+        room.hostSocket = socket.id; // ✅ Guardar socket del host
+        console.log(`🏠 Host ${userId} unido a sala ${callId}`);
+
+        // ✅ NOTIFICAR A TODOS EN LA SALA que el host está listo
+        io.to(callId).emit('host-ready', {
+          callId,
+          hostId: userId
+        });
+
       } else if (userRole === 'guest') {
         room.guest = userId.toString();
-        socket.to(callId).emit('user-joined', {
+        room.guestSocket = socket.id; // ✅ Guardar socket del guest
+        console.log(`👤 Guest ${userId} unido a sala ${callId}`);
+
+        // ✅ NOTIFICAR A TODOS EN LA SALA que el guest se unió
+        io.to(callId).emit('user-joined', {
           userId,
           userRole,
+          callId,
           cameraEnabled: room.guestCameraEnabled
         });
       }
 
-      // Enviar configuración actual de la sala al usuario
+      // ✅ MEJORADO: Enviar configuración actual de la sala al usuario
       socket.emit('room-config', {
         callId,
         userRole,
@@ -200,10 +215,88 @@ function initializeWebSocket(server) {
         audioEnabled: room.audioEnabled
       });
 
-      // Si ambos usuarios están en la sala, notificar conexión establecida
+      // ✅ MEJORADO: Si ambos usuarios están en la sala, notificar conexión establecida
+      console.log(`🔍 Estado sala ${callId}: Host=${room.host ? 'Sí' : 'No'}, Guest=${room.guest ? 'Sí' : 'No'}`);
+
       if (room.host && room.guest) {
-        io.to(callId).emit('call-connected', { callId });
+        console.log(`✅ AMBOS USUARIOS EN SALA ${callId}! Notificando conexión...`);
+
+        // ✅ Notificar a AMBOS usuarios que están conectados
+        io.to(callId).emit('call-connected', {
+          callId,
+          hostId: room.host,
+          guestId: room.guest
+        });
+
+        // ✅ INICIAR WEBRTC AUTOMÁTICAMENTE cuando ambos están en la sala
+        io.to(callId).emit('start-webrtc', {
+          callId,
+          initiator: room.guestSocket // El guest inicia la oferta WebRTC
+        });
       }
+    });
+
+    // ✅ NUEVO: Iniciar oferta WebRTC cuando ambos están conectados
+    socket.on('start-webrtc-offer', (data) => {
+      const { callId, targetUserId } = data;
+      console.log(`🎯 Iniciando WebRTC offer en sala ${callId} para ${targetUserId}`);
+
+      // Notificar al target que inicie WebRTC
+      if (targetUserId) {
+        io.to(`user-${targetUserId}`).emit('initiate-webrtc', { callId });
+      } else {
+        socket.to(callId).emit('initiate-webrtc', { callId });
+      }
+    });
+
+    // ✅ NUEVO: Verificar estado de la sala
+    socket.on('check-room-status', (data) => {
+      const { callId } = data;
+      const room = rooms.get(callId);
+
+      if (room) {
+        socket.emit('room-status', {
+          callId,
+          hostPresent: !!room.host,
+          guestPresent: !!room.guest,
+          hostSocket: room.hostSocket,
+          guestSocket: room.guestSocket
+        });
+      } else {
+        socket.emit('room-status', {
+          callId,
+          hostPresent: false,
+          guestPresent: false
+        });
+      }
+    });
+
+    // ✅ NUEVO: Forzar reconexión de usuarios
+    socket.on('request-user-rejoin', (data) => {
+      const { callId, userType } = data;
+      console.log(`🔄 Solicitando reconexión para ${userType} en sala ${callId}`);
+
+      const room = rooms.get(callId);
+      if (room) {
+        if (userType === 'host' && room.hostSocket) {
+          io.to(room.hostSocket).emit('rejoin-call', { callId });
+        } else if (userType === 'guest' && room.guestSocket) {
+          io.to(room.guestSocket).emit('rejoin-call', { callId });
+        }
+      }
+    });
+
+    // ✅ ENDPOINT DE DEBUG: Verificar salas
+    socket.on('debug-rooms', () => {
+      const rooms = io.sockets.adapter.rooms;
+      console.log('🔍 SALAS ACTIVAS:');
+
+      rooms.forEach((sockets, roomName) => {
+        if (!sockets.has(roomName)) { // Filtrar salas reales (no sockets individuales)
+          console.log(`   - ${roomName}: ${sockets.size} usuarios`);
+          console.log(`     Sockets: ${Array.from(sockets)}`);
+        }
+      });
     });
 
     // ✅ SEÑALES WEBRTC GENÉRICAS

@@ -106,21 +106,20 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-      // Elementos DOM
+      // ✅ VARIABLES GLOBALES (FALTABAN)
       const localVideo = document.getElementById("localVideo");
       const remoteVideo = document.getElementById("remoteVideo");
       const status = document.getElementById("status");
       const notificationStatus = document.getElementById("notificationStatus");
       const endCallButton = document.getElementById("endCallButton");
 
-      // Variables
       let localStream = null;
       let peerConnection = null;
       let socket = null;
       let callId = null;
       let hostId = null;
 
-      // Configuración ICE
+      // ✅ CONFIGURACIÓN ICE
       const pcConfig = {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
@@ -128,29 +127,49 @@
         ],
       };
 
+      // ✅ INICIALIZAR AL CARGAR LA PÁGINA
       window.addEventListener("load", async () => {
         await initializeCall();
       });
 
       async function initializeCall() {
         try {
-          status.textContent = "Activando cámara y micrófono...";
-
-          // Obtener código QR
           const urlParams = new URLSearchParams(window.location.search);
-          const code = urlParams.get("code");
+          const qrCode = urlParams.get("code");
 
-          if (!code) {
+          if (!qrCode) {
             status.textContent = "Error: Código QR no válido";
             return;
           }
 
-          callId = code;
+          status.textContent = "Activando cámara y micrófono...";
 
-          // Obtener host
-          await getHostInfo(code);
+          // ✅ OBTENER HOST INFO Y CREAR LLAMADA
+          const hostInfo = await getHostInfo(qrCode);
+          
+          const callResponse = await fetch("/videocall/anonymous-call", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              qrCode: qrCode,
+              guestName: "Visitante Web",
+            }),
+          });
 
-          // Pedir permisos
+          const callData = await callResponse.json();
+
+          if (!callData.success) {
+            throw new Error(callData.error || "Error creando llamada");
+          }
+
+          // ✅ USAR EL callId REAL
+          callId = callData.callId;
+          hostId = callData.hostId;
+
+          console.log("✅ Call ID real:", callId);
+          console.log("✅ Host ID:", hostId);
+
+          // OBTENER MEDIA
           localStream = await navigator.mediaDevices.getUserMedia({
             video: {
               width: { ideal: 1280 },
@@ -167,7 +186,7 @@
           localVideo.srcObject = localStream;
           status.textContent = "Cámara activada - Conectando...";
 
-          // Conectar a Socket.io
+          // CONECTAR SOCKET
           socket = io("https://videoporteroqr-back.onrender.com", {
             transports: ["websocket"],
             secure: true,
@@ -175,18 +194,15 @@
 
           setupSocketEvents();
 
-          // Unirse a la sala con el sistema correcto
+          // ✅ UNIRSE A LA SALA CON EL callId CORRECTO
           socket.emit("join-call-room", {
             callId: callId,
             userType: "guest",
             userId: "web-guest-" + Date.now(),
           });
 
-          // Notificar al host
+          // NOTIFICAR AL HOST
           await sendNotificationToHost();
-
-          // Iniciar WebRTC
-          setTimeout(initiateWebRTC, 1500);
 
         } catch (err) {
           console.error("Error inicial:", err);
@@ -199,16 +215,16 @@
           const res = await fetch(`/auth/host-by-qr/${qrCode}`);
           if (!res.ok) throw new Error("Host no encontrado");
           const data = await res.json();
-          hostId = data.host.id;
-          console.log("Host encontrado:", data.host.name);
+          return data.host;
         } catch (err) {
           console.error("Error obteniendo host:", err);
+          throw err;
         }
       }
 
       async function sendNotificationToHost() {
         if (!hostId) return;
-
+        
         notificationStatus.style.display = "block";
         notificationStatus.textContent = "Notificando al host...";
 
@@ -216,7 +232,7 @@
         socket.emit("call-host", {
           hostId,
           call: {
-            _id: `web-${Date.now()}`,
+            _id: callId, // ✅ Usar el mismo callId
             guestName: "Visitante Web",
             guestEmail: "web@visitante.com",
             hostId,
@@ -226,20 +242,7 @@
           },
         });
 
-        // Backup por API
-        try {
-          await fetch("/videocall/anonymous-call", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              qrCode: callId,
-              guestName: "Visitante Web",
-            }),
-          });
-          notificationStatus.textContent = "Host notificado - Esperando...";
-        } catch (e) {
-          console.error("Error API backup:", e);
-        }
+        notificationStatus.textContent = "Host notificado - Esperando...";
       }
 
       function setupSocketEvents() {
@@ -248,16 +251,34 @@
           status.textContent = "Llamando al host...";
         });
 
-        // Recibir offer del host
+        // ✅ EVENTOS NUEVOS PARA SALA COMPARTIDA
+        socket.on("host-ready", (data) => {
+          console.log("✅ Host listo en la sala:", data);
+          status.textContent = "Host conectado - Iniciando videollamada...";
+          initiateWebRTC();
+        });
+
+        socket.on("call-connected", (data) => {
+          console.log("✅ Conexión establecida con host:", data);
+          status.textContent = "Videollamada conectada";
+          notificationStatus.textContent = "Conectado con el host";
+          notificationStatus.style.backgroundColor = "#28a745";
+          endCallButton.style.display = "block";
+        });
+
+        socket.on("start-webrtc", (data) => {
+          console.log("🎯 Iniciando WebRTC...");
+          initiateWebRTC();
+        });
+
+        // ✅ WEBRTC EVENTOS (EXISTENTES)
         socket.on("offer", async (data) => {
           console.log("Offer recibida del host");
           if (!peerConnection) await initiateWebRTC();
-
           try {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
-
             socket.emit("answer", {
               answer,
               callId,
@@ -268,7 +289,6 @@
           }
         });
 
-        // Recibir answer del host
         socket.on("answer", async (data) => {
           console.log("Answer recibida");
           if (peerConnection && !peerConnection.remoteDescription) {
@@ -276,7 +296,6 @@
           }
         });
 
-        // ICE candidates
         socket.on("ice-candidate", async (data) => {
           if (data.userType === "host" && data.candidate && peerConnection) {
             try {
@@ -285,13 +304,6 @@
               console.log("ICE candidate ignorado:", e);
             }
           }
-        });
-
-        socket.on("call-connected", () => {
-          status.textContent = "Videollamada conectada";
-          notificationStatus.textContent = "Conectado con el host";
-          notificationStatus.style.backgroundColor = "#28a745";
-          endCallButton.style.display = "block";
         });
 
         socket.on("call-ended", () => {
@@ -306,9 +318,8 @@
 
       async function initiateWebRTC() {
         if (peerConnection) return;
-
+        
         status.textContent = "Estableciendo conexión segura...";
-
         peerConnection = new RTCPeerConnection(pcConfig);
 
         // Añadir tracks locales
@@ -340,14 +351,15 @@
             offerToReceiveAudio: true,
             offerToReceiveVideo: true,
           });
+          
           await peerConnection.setLocalDescription(offer);
-
+          
           socket.emit("offer", {
             offer,
             callId,
             userType: "guest",
           });
-
+          
           console.log("Offer enviada al host");
           status.textContent = "Conectando con el host...";
         } catch (e) {
@@ -358,32 +370,28 @@
 
       function endCall() {
         status.textContent = "Finalizando llamada...";
-
         if (peerConnection) {
           peerConnection.close();
           peerConnection = null;
         }
-
         if (localStream) {
           localStream.getTracks().forEach((t) => t.stop());
           localStream = null;
         }
-
         if (socket) {
           socket.emit("end-call", { callId });
           socket.disconnect();
           socket = null;
         }
-
         localVideo.srcObject = null;
         remoteVideo.srcObject = null;
         endCallButton.style.display = "none";
         notificationStatus.style.display = "none";
-
         status.textContent = "Llamada finalizada";
         setTimeout(() => window.close(), 3000);
       }
 
+      // ✅ EVENT LISTENERS (FALTABAN)
       endCallButton.addEventListener("click", endCall);
 
       window.addEventListener("beforeunload", () => {
