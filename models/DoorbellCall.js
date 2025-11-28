@@ -1,4 +1,4 @@
-// models/DoorbellCall.js - VERSIÓN CORREGIDA Y COMPLETA
+// models/DoorbellCall.js - MEJORAR el manejo de timeout
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
@@ -57,16 +57,21 @@ const doorbellCallSchema = new mongoose.Schema({
   messages: [messageSchema],
   timeoutAt: {
     type: Date,
-    default: () => new Date(Date.now() + 35 * 1000)
-  },
-  // ESTOS DOS CAMPOS SON LA CLAVE
-  callId: { type: String, required: true },     // <-- AÑADIDO
-  qrCode: { type: String },                     // <-- AÑADIDO (opcional, para debug)
+    default: () => new Date(Date.now() + 35 * 1000) // 35 segundos para testing
+  }
 }, {
   timestamps: true
 });
 
-// TTL para limpiar llamadas viejas
-doorbellCallSchema.index({ timeoutAt: 1 }, { expireAfterSeconds: 300 });
+// Middleware para marcar como timeout antes de la eliminación
+doorbellCallSchema.pre('deleteOne', { document: true }, function(next) {
+  console.log(`⏰ Llamada ${this._id} expirando por TTL`);
+  next();
+});
+
+// Índice TTL para limpieza automática (aumentado a 5 minutos para testing)
+doorbellCallSchema.index({ timeoutAt: 1 }, { 
+  expireAfterSeconds: 300 // 5 minutos
+});
 
 module.exports = mongoose.model('DoorbellCall', doorbellCallSchema);

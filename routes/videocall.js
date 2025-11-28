@@ -162,60 +162,57 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
 });
 
 // routes/videocall.js - CORREGIR el endpoint anonymous-call
-
 router.post('/anonymous-call', async (req, res) => {
   try {
     const { qrCode, guestName = "Visitante" } = req.body;
-    
+
+    console.log(`🎥 Llamada anónima recibida con QR: ${qrCode}`);
+
     if (!qrCode) {
       return res.status(400).json({ error: 'Código QR requerido' });
     }
 
+    // Buscar host por QR code
     const host = await User.findOne({ qrCode, role: 'host' });
     if (!host) {
+      console.log(`❌ Host no encontrado para QR: ${qrCode}`);
       return res.status(404).json({ error: 'Host no encontrado' });
     }
 
-    // USAMOS EL qrCode COMO callId → así guest web y host usan el MISMO ID
-    const callId = qrCode;
-
+    // ✅ CORREGIDO: Crear llamada con guestId como null o string vacío
     const videoCall = await DoorbellCall.create({
       hostId: host._id,
-      guestId: null,
-      guestName,
+      guestId: null, // ✅ Para llamadas anónimas
+      guestName: guestName,
       guestEmail: 'anonimo@visitante.com',
       status: 'pending',
       callType: 'video',
-      callId: callId,      // ← CLAVE
-      qrCode: qrCode       // ← para debug
     });
 
-    console.log(`Llamada anónima creada con callId: ${callId}`);
+    console.log(`🔔 Notificando a host: ${host.name} sobre llamada anónima`);
 
-    // Notificar al host
+    // Notificar al host via WebSocket
     const io = getIO();
     io.to(host._id.toString()).emit('call-incoming', {
       _id: videoCall._id,
-      guestName,
+      guestName: guestName,
       guestEmail: 'anonimo@visitante.com',
       hostId: host._id,
       createdAt: new Date().toISOString(),
       status: 'pending',
-      callId: callId,          // ← importante
       isAnonymous: true
     });
 
-    // DEVOLVEMOS EL callId QUE DEBE USAR EL GUEST WEB
-    res.json({ 
+    res.json({
       success: true,
-      callId: callId,          // ← este es el que debe usar el HTML
+      callId: videoCall._id,
       hostName: host.name,
-      message: 'Llamada iniciada'
+      message: 'Llamada iniciada correctamente'
     });
 
   } catch (error) {
-    console.error('Error en anonymous-call:', error);
-    res.status(500).json({ error: 'Error interno' });
+    console.error('❌ Error en llamada anónima:', error);
+    res.status(500).json({ error: 'Error iniciando videollamada' });
   }
 });
 
