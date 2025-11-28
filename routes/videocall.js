@@ -13,7 +13,7 @@ const { getIO } = require('../websocket-server');
 router.post('/start-automatic', authMiddleware, roleGuard('guest'), async (req, res) => {
   try {
     const guest = req.user;
-    
+
     // Verificar que el guest tenga un host
     if (!guest.hostRef) {
       return res.status(400).json({ error: 'No estás asociado a ningún host' });
@@ -21,12 +21,14 @@ router.post('/start-automatic', authMiddleware, roleGuard('guest'), async (req, 
 
     // Crear una nueva llamada de videollamada
     const videoCall = await DoorbellCall.create({
-      hostId: guest.hostRef,
-      guestId: guest._id,
-      guestName: guest.name,
-      guestEmail: guest.email,
+      hostId: host._id,
+      guestId: null,
+      guestName: guestName,
+      guestEmail: 'anonimo@visitante.com',
       status: 'pending',
-      callType: 'video' // Nuevo campo para identificar videollamadas
+      callType: 'video',
+      qrCode: qrCode,  // <-- Añade esto
+      callId: qrCode,   // <-- ESTO ES LO IMPORTANTE
     });
 
     console.log(`🎥 Videollamada automática iniciada: ${guest.name} -> Host`);
@@ -41,8 +43,9 @@ router.post('/start-automatic', authMiddleware, roleGuard('guest'), async (req, 
 
     res.json({
       success: true,
-      callId: videoCall._id,
-      message: 'Videollamada iniciada automáticamente'
+      callId: qrCode,  // <-- Devuelve el qrCode como callId
+      hostName: host.name,
+      message: 'Llamada iniciada correctamente'
     });
 
   } catch (error) {
@@ -58,7 +61,7 @@ router.post('/start-automatic', authMiddleware, roleGuard('guest'), async (req, 
 router.post('/accept-call', authMiddleware, roleGuard('host'), async (req, res) => {
   try {
     const { callId } = req.body;
-    
+
     const videoCall = await DoorbellCall.findById(callId);
     if (!videoCall) {
       return res.status(404).json({ error: 'Videollamada no encontrada' });
@@ -99,7 +102,7 @@ router.post('/accept-call', authMiddleware, roleGuard('host'), async (req, res) 
 router.post('/reject-call', authMiddleware, roleGuard('host'), async (req, res) => {
   try {
     const { callId } = req.body;
-    
+
     const videoCall = await DoorbellCall.findById(callId);
     if (!videoCall) {
       return res.status(404).json({ error: 'Videollamada no encontrada' });
@@ -132,7 +135,7 @@ router.post('/reject-call', authMiddleware, roleGuard('host'), async (req, res) 
 router.get('/config/:callId', authMiddleware, async (req, res) => {
   try {
     const { callId } = req.params;
-    
+
     const videoCall = await DoorbellCall.findById(callId);
     if (!videoCall) {
       return res.status(404).json({ error: 'Videollamada no encontrada' });
@@ -141,7 +144,7 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
     // Verificar permisos
     const isHost = req.user._id.toString() === videoCall.hostId.toString();
     const isGuest = req.user._id.toString() === videoCall.guestId.toString();
-    
+
     if (!isHost && !isGuest) {
       return res.status(403).json({ error: 'No tienes permisos para esta llamada' });
     }
@@ -159,57 +162,60 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
 });
 
 // routes/videocall.js - CORREGIR el endpoint anonymous-call
+
 router.post('/anonymous-call', async (req, res) => {
   try {
     const { qrCode, guestName = "Visitante" } = req.body;
-    
-    console.log(`🎥 Llamada anónima recibida con QR: ${qrCode}`);
     
     if (!qrCode) {
       return res.status(400).json({ error: 'Código QR requerido' });
     }
 
-    // Buscar host por QR code
     const host = await User.findOne({ qrCode, role: 'host' });
     if (!host) {
-      console.log(`❌ Host no encontrado para QR: ${qrCode}`);
       return res.status(404).json({ error: 'Host no encontrado' });
     }
 
-    // ✅ CORREGIDO: Crear llamada con guestId como null o string vacío
+    // USAMOS EL qrCode COMO callId → así guest web y host usan el MISMO ID
+    const callId = qrCode;
+
     const videoCall = await DoorbellCall.create({
       hostId: host._id,
-      guestId: null, // ✅ Para llamadas anónimas
-      guestName: guestName,
+      guestId: null,
+      guestName,
       guestEmail: 'anonimo@visitante.com',
       status: 'pending',
       callType: 'video',
+      callId: callId,      // ← CLAVE
+      qrCode: qrCode       // ← para debug
     });
 
-    console.log(`🔔 Notificando a host: ${host.name} sobre llamada anónima`);
+    console.log(`Llamada anónima creada con callId: ${callId}`);
 
-    // Notificar al host via WebSocket
+    // Notificar al host
     const io = getIO();
     io.to(host._id.toString()).emit('call-incoming', {
       _id: videoCall._id,
-      guestName: guestName,
+      guestName,
       guestEmail: 'anonimo@visitante.com',
       hostId: host._id,
       createdAt: new Date().toISOString(),
       status: 'pending',
+      callId: callId,          // ← importante
       isAnonymous: true
     });
 
+    // DEVOLVEMOS EL callId QUE DEBE USAR EL GUEST WEB
     res.json({ 
       success: true,
-      callId: videoCall._id,
+      callId: callId,          // ← este es el que debe usar el HTML
       hostName: host.name,
-      message: 'Llamada iniciada correctamente'
+      message: 'Llamada iniciada'
     });
 
   } catch (error) {
-    console.error('❌ Error en llamada anónima:', error);
-    res.status(500).json({ error: 'Error iniciando videollamada' });
+    console.error('Error en anonymous-call:', error);
+    res.status(500).json({ error: 'Error interno' });
   }
 });
 
