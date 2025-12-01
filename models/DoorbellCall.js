@@ -1,4 +1,3 @@
-// models/DoorbellCall.js - MEJORAR el manejo de timeout
 const mongoose = require('mongoose');
 
 const messageSchema = new mongoose.Schema({
@@ -18,6 +17,11 @@ const messageSchema = new mongoose.Schema({
 });
 
 const doorbellCallSchema = new mongoose.Schema({
+  // ✅ CAMBIAR _id a String para aceptar IDs personalizados
+  _id: {
+    type: String,
+    default: () => `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  },
   hostId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -26,8 +30,7 @@ const doorbellCallSchema = new mongoose.Schema({
   guestId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false,
-    default: null,
+    default: null
   },
   guestName: {
     type: String,
@@ -39,7 +42,7 @@ const doorbellCallSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'answered', 'timeout'],
+    enum: ['pending', 'answered', 'timeout', 'rejected'],
     default: 'pending'
   },
   callType: {
@@ -49,29 +52,24 @@ const doorbellCallSchema = new mongoose.Schema({
   },
   response: {
     type: String,
-    enum: ['accept', 'reject']
+    enum: ['accept', 'reject', 'timeout'],
+    default: null
   },
   answeredAt: {
     type: Date
   },
-  messages: [messageSchema],
-  timeoutAt: {
-    type: Date,
-    default: () => new Date(Date.now() + 35 * 1000) // 35 segundos para testing
-  }
+  qrCode: { // ✅ Añadir este campo para guardar el QR
+    type: String
+  },
+  isAnonymous: {
+    type: Boolean,
+    default: false
+  },
+  messages: [messageSchema]
 }, {
-  timestamps: true
-});
-
-// Middleware para marcar como timeout antes de la eliminación
-doorbellCallSchema.pre('deleteOne', { document: true }, function(next) {
-  console.log(`⏰ Llamada ${this._id} expirando por TTL`);
-  next();
-});
-
-// Índice TTL para limpieza automática (aumentado a 5 minutos para testing)
-doorbellCallSchema.index({ timeoutAt: 1 }, { 
-  expireAfterSeconds: 300 // 5 minutos
+  timestamps: true,
+  // ✅ DESACTIVAR LA GENERACIÓN AUTOMÁTICA DE _id
+  _id: false 
 });
 
 module.exports = mongoose.model('DoorbellCall', doorbellCallSchema);

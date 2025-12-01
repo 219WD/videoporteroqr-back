@@ -82,6 +82,43 @@
       .error {
         background: #dc3545 !important;
       }
+      .message-box {
+        background: rgba(0, 0, 0, 0.7);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 20px auto;
+        max-width: 500px;
+        display: none;
+      }
+      .message-box textarea {
+        width: 100%;
+        height: 100px;
+        margin: 10px 0;
+        padding: 10px;
+        border-radius: 5px;
+        border: none;
+        resize: none;
+      }
+      .message-box button {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      .message-box button.reject {
+        background: #dc3545;
+      }
+      .waiting-message {
+        background: rgba(255, 193, 7, 0.2);
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        margin: 15px 0;
+        text-align: left;
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -93,6 +130,15 @@
       </div>
 
       <div id="status" class="status">Iniciando videollamada...</div>
+
+      <!-- Mensaje de espera para cuando el host rechace -->
+      <div id="waitingMessage" class="waiting-message">
+        <h3>📝 ¿Quieres dejar un mensaje?</h3>
+        <p>El host no está disponible en este momento. Puedes dejar un mensaje y te contactaremos luego.</p>
+        <textarea id="guestMessage" placeholder="Escribe tu mensaje aquí..."></textarea>
+        <button onclick="sendMessageToHost()">📤 Enviar Mensaje</button>
+        <button onclick="closePage()" class="reject">❌ Cerrar</button>
+      </div>
 
       <div class="video-container">
         <video id="localVideo" autoplay muted playsinline></video>
@@ -106,25 +152,35 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-      // ✅ VARIABLES GLOBALES (FALTABAN)
+      // ✅ VARIABLES GLOBALES
       const localVideo = document.getElementById("localVideo");
       const remoteVideo = document.getElementById("remoteVideo");
       const status = document.getElementById("status");
       const notificationStatus = document.getElementById("notificationStatus");
       const endCallButton = document.getElementById("endCallButton");
+      const waitingMessage = document.getElementById("waitingMessage");
 
       let localStream = null;
       let peerConnection = null;
       let socket = null;
       let callId = null;
       let hostId = null;
+      let hostName = null;
+      let isCallActive = false;
+      let isHostResponded = false;
+      let connectionAttempts = 0;
+      const MAX_CONNECTION_ATTEMPTS = 3;
 
-      // ✅ CONFIGURACIÓN ICE
+      // ✅ CONFIGURACIÓN ICE MEJORADA
       const pcConfig = {
         iceServers: [
           { urls: "stun:stun.l.google.com:19302" },
           { urls: "stun:stun1.l.google.com:19302" },
+          { urls: "stun:stun2.l.google.com:19302" },
+          { urls: "stun:stun3.l.google.com:19302" },
+          { urls: "stun:stun4.l.google.com:19302" }
         ],
+        iceCandidatePoolSize: 10
       };
 
       // ✅ INICIALIZAR AL CARGAR LA PÁGINA
@@ -139,14 +195,25 @@
 
           if (!qrCode) {
             status.textContent = "Error: Código QR no válido";
+            showError("No se encontró código QR en la URL");
             return;
           }
 
           status.textContent = "Activando cámara y micrófono...";
 
-          // ✅ OBTENER HOST INFO Y CREAR LLAMADA
+          // ✅ 1. OBTENER INFORMACIÓN DEL HOST
           const hostInfo = await getHostInfo(qrCode);
-          
+          if (!hostInfo) {
+            throw new Error("No se pudo obtener información del host");
+          }
+
+          hostName = hostInfo.name;
+          hostId = hostInfo.id;
+
+          console.log(`✅ Host encontrado: ${hostName} (ID: ${hostId})`);
+
+          // ✅ 2. CREAR LLAMADA ANÓNIMA EN EL BACKEND
+          status.textContent = "Creando llamada...";
           const callResponse = await fetch("/videocall/anonymous-call", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -162,51 +229,50 @@
             throw new Error(callData.error || "Error creando llamada");
           }
 
-          // ✅ USAR EL callId REAL
+          // ✅ 3. GUARDAR DATOS DE LA LLAMADA
           callId = callData.callId;
-          hostId = callData.hostId;
-
-          console.log("✅ Call ID real:", callId);
+          console.log("✅ Call ID creado:", callId);
           console.log("✅ Host ID:", hostId);
 
-          // OBTENER MEDIA
-          localStream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              facingMode: "user",
-            },
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            },
-          });
+          // ✅ 4. OBTENER MEDIA (CÁMARA Y MICRÓFONO)
+          try {
+            localStream = await navigator.mediaDevices.getUserMedia({
+              video: {
+                width: { ideal: 640 },
+                height: { ideal: 480 },
+                facingMode: "user",
+                frameRate: { ideal: 30 }
+              },
+              audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                sampleRate: 44100,
+                channelCount: 1
+              }
+            });
 
-          localVideo.srcObject = localStream;
-          status.textContent = "Cámara activada - Conectando...";
+            localVideo.srcObject = localStream;
+            status.textContent = "Cámara activada - Conectando con el host...";
+          } catch (mediaError) {
+            console.warn("No se pudo acceder a cámara/micrófono:", mediaError);
+            status.textContent = "Conectando con el host (sin cámara)...";
+            // Continuar sin media
+          }
 
-          // CONECTAR SOCKET
-          socket = io("https://videoporteroqr-back.onrender.com", {
-            transports: ["websocket"],
-            secure: true,
-          });
+          // ✅ 5. CONECTAR AL WEBSOCKET
+          connectWebSocket();
 
-          setupSocketEvents();
-
-          // ✅ UNIRSE A LA SALA CON EL callId CORRECTO
-          socket.emit("join-call-room", {
-            callId: callId,
-            userType: "guest",
-            userId: "web-guest-" + Date.now(),
-          });
-
-          // NOTIFICAR AL HOST
+          // ✅ 6. NOTIFICAR AL HOST
           await sendNotificationToHost();
+
+          // ✅ 7. INICIAR POLLING PARA VERIFICAR ESTADO
+          startCallStatusPolling();
 
         } catch (err) {
           console.error("Error inicial:", err);
-          status.textContent = `Error: ${err.message || "Permisos denegados"}`;
+          status.textContent = `Error: ${err.message}`;
+          showError(err.message);
         }
       }
 
@@ -222,82 +288,180 @@
         }
       }
 
+      function connectWebSocket() {
+        // Conectar al WebSocket del backend
+        const socketUrl = window.location.hostname === 'localhost' 
+          ? 'http://localhost:5000' 
+          : 'https://videoporteroqr-back.onrender.com';
+        
+        socket = io(socketUrl, {
+          transports: ["websocket", "polling"],
+          reconnection: true,
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000
+        });
+
+        setupSocketEvents();
+      }
+
       async function sendNotificationToHost() {
-        if (!hostId) return;
+        if (!hostId || !callId) return;
         
         notificationStatus.style.display = "block";
         notificationStatus.textContent = "Notificando al host...";
 
-        // Notificación por Socket.io
-        socket.emit("call-host", {
-          hostId,
-          call: {
-            _id: callId, // ✅ Usar el mismo callId
-            guestName: "Visitante Web",
-            guestEmail: "web@visitante.com",
+        try {
+          // Enviar notificación por WebSocket
+          socket.emit("call-host", {
             hostId,
-            createdAt: new Date().toISOString(),
-            status: "pending",
-            isWebGuest: true,
-          },
-        });
+            call: {
+              _id: callId,
+              guestName: "Visitante Web",
+              guestEmail: "web@visitante.com",
+              hostId,
+              createdAt: new Date().toISOString(),
+              status: "pending",
+              isWebGuest: true,
+              isAnonymous: true
+            }
+          });
 
-        notificationStatus.textContent = "Host notificado - Esperando...";
+          notificationStatus.textContent = "Llamando al host...";
+          
+          // También unirse a la sala de la llamada
+          socket.emit("join-call-room", {
+            callId: callId,
+            userId: "web-guest-" + Date.now(),
+            userRole: "guest"
+          });
+
+          console.log(`📞 Llamando al host ${hostName}...`);
+
+        } catch (error) {
+          console.error("Error notificando al host:", error);
+          notificationStatus.textContent = "Error notificando al host";
+          notificationStatus.className = "notification-badge error";
+        }
+      }
+
+      function startCallStatusPolling() {
+        // Polling cada 3 segundos para verificar estado
+        const pollInterval = setInterval(async () => {
+          if (isHostResponded || !callId) {
+            clearInterval(pollInterval);
+            return;
+          }
+
+          try {
+            const response = await fetch(`/notifications/call-status/${callId}`);
+            if (response.ok) {
+              const data = await response.json();
+              
+              if (data.success && data.call) {
+                const call = data.call;
+                
+                if (call.status === 'answered' && call.response === 'accept') {
+                  // Host aceptó - iniciar WebRTC
+                  isHostResponded = true;
+                  clearInterval(pollInterval);
+                  notificationStatus.textContent = "✅ Host aceptó la llamada";
+                  notificationStatus.style.backgroundColor = "#28a745";
+                  initiateWebRTC();
+                } else if (call.status === 'answered' && call.response === 'reject') {
+                  // Host rechazó
+                  isHostResponded = true;
+                  clearInterval(pollInterval);
+                  handleHostRejection();
+                } else if (call.status === 'timeout') {
+                  // Timeout
+                  isHostResponded = true;
+                  clearInterval(pollInterval);
+                  handleCallTimeout();
+                }
+              }
+            }
+          } catch (error) {
+            console.log("Polling error:", error);
+          }
+        }, 3000);
+
+        // Timeout general después de 60 segundos
+        setTimeout(() => {
+          if (!isHostResponded && !isCallActive) {
+            clearInterval(pollInterval);
+            handleCallTimeout();
+          }
+        }, 60000);
       }
 
       function setupSocketEvents() {
         socket.on("connect", () => {
-          console.log("Conectado al servidor");
-          status.textContent = "Llamando al host...";
+          console.log("✅ Conectado al servidor WebSocket");
+          status.textContent = "Conectado - Llamando al host...";
         });
 
-        // ✅ EVENTOS NUEVOS PARA SALA COMPARTIDA
-        socket.on("host-ready", (data) => {
-          console.log("✅ Host listo en la sala:", data);
-          status.textContent = "Host conectado - Iniciando videollamada...";
-          initiateWebRTC();
+        socket.on("connect_error", (error) => {
+          console.error("❌ Error de conexión WebSocket:", error);
+          status.textContent = "Error de conexión - Intentando reconectar...";
         });
 
-        socket.on("call-connected", (data) => {
-          console.log("✅ Conexión establecida con host:", data);
-          status.textContent = "Videollamada conectada";
-          notificationStatus.textContent = "Conectado con el host";
-          notificationStatus.style.backgroundColor = "#28a745";
-          endCallButton.style.display = "block";
+        // ✅ ESCUCHAR RESPUESTA DEL HOST
+        socket.on("call-response", (data) => {
+          console.log("📩 Respuesta del host recibida:", data);
+          
+          if (data.callId === callId) {
+            isHostResponded = true;
+            
+            if (data.response === 'accept') {
+              // Host aceptó
+              notificationStatus.textContent = "✅ Host aceptó la llamada";
+              notificationStatus.style.backgroundColor = "#28a745";
+              status.textContent = "Host conectado - Iniciando videollamada...";
+              initiateWebRTC();
+            } else if (data.response === 'reject') {
+              // Host rechazó
+              handleHostRejection();
+            }
+          }
         });
 
-        socket.on("start-webrtc", (data) => {
-          console.log("🎯 Iniciando WebRTC...");
-          initiateWebRTC();
-        });
-
-        // ✅ WEBRTC EVENTOS (EXISTENTES)
+        // ✅ WEBRTC EVENTOS
         socket.on("offer", async (data) => {
-          console.log("Offer recibida del host");
+          console.log("📨 Offer WebRTC recibida");
           if (!peerConnection) await initiateWebRTC();
           try {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
+            
             socket.emit("answer", {
               answer,
               callId,
-              userType: "guest",
+              targetUserId: data.from
             });
+            
+            console.log("📤 Answer enviada");
           } catch (e) {
             console.error("Error procesando offer:", e);
           }
         });
 
         socket.on("answer", async (data) => {
-          console.log("Answer recibida");
+          console.log("📨 Answer WebRTC recibida");
           if (peerConnection && !peerConnection.remoteDescription) {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+            try {
+              await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+              isCallActive = true;
+              endCallButton.style.display = "block";
+              status.textContent = "✅ Videollamada conectada";
+            } catch (e) {
+              console.error("Error procesando answer:", e);
+            }
           }
         });
 
         socket.on("ice-candidate", async (data) => {
-          if (data.userType === "host" && data.candidate && peerConnection) {
+          if (data.candidate && peerConnection) {
             try {
               await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
             } catch (e) {
@@ -307,95 +471,236 @@
         });
 
         socket.on("call-ended", () => {
+          console.log("📞 Llamada finalizada por el host");
           status.textContent = "Llamada finalizada por el host";
           endCall();
         });
 
+        socket.on("call-connected", (data) => {
+          console.log("✅ Conexión establecida:", data);
+          if (data.callId === callId) {
+            status.textContent = "✅ Conexión establecida con el host";
+          }
+        });
+
         socket.on("disconnect", () => {
-          status.textContent = "Conexión perdida";
+          console.log("🔌 Desconectado del servidor");
+          if (isCallActive) {
+            status.textContent = "Conexión perdida - Reconectando...";
+          }
         });
       }
 
       async function initiateWebRTC() {
-        if (peerConnection) return;
+        if (peerConnection || isCallActive) return;
         
+        console.log("🎯 Iniciando WebRTC...");
+        connectionAttempts++;
         status.textContent = "Estableciendo conexión segura...";
-        peerConnection = new RTCPeerConnection(pcConfig);
+        
+        try {
+          peerConnection = new RTCPeerConnection(pcConfig);
+          isCallActive = true;
 
-        // Añadir tracks locales
-        localStream.getTracks().forEach((track) => {
-          peerConnection.addTrack(track, localStream);
-        });
-
-        // Recibir stream del host
-        peerConnection.ontrack = (event) => {
-          console.log("Stream del host recibido");
-          remoteVideo.srcObject = event.streams[0];
-          status.textContent = "Videollamada activa";
-        };
-
-        // Enviar ICE candidates
-        peerConnection.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit("ice-candidate", {
-              candidate: event.candidate,
-              callId,
-              userType: "guest",
+          // Añadir tracks locales si existen
+          if (localStream) {
+            localStream.getTracks().forEach((track) => {
+              peerConnection.addTrack(track, localStream);
             });
           }
-        };
 
-        // Crear y enviar offer
-        try {
+          // Recibir stream del host
+          peerConnection.ontrack = (event) => {
+            console.log("🎥 Stream del host recibido");
+            if (event.streams && event.streams[0]) {
+              remoteVideo.srcObject = event.streams[0];
+              status.textContent = "✅ Videollamada activa";
+              endCallButton.style.display = "block";
+            }
+          };
+
+          // Manejar conexión establecida
+          peerConnection.onconnectionstatechange = () => {
+            console.log("Estado conexión:", peerConnection.connectionState);
+            if (peerConnection.connectionState === 'connected') {
+              status.textContent = "✅ Videollamada conectada";
+            }
+          };
+
+          // Enviar ICE candidates
+          peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+              socket.emit("ice-candidate", {
+                candidate: event.candidate,
+                callId,
+                targetUserId: hostId
+              });
+            }
+          };
+
+          // Crear y enviar offer
           const offer = await peerConnection.createOffer({
             offerToReceiveAudio: true,
-            offerToReceiveVideo: true,
+            offerToReceiveVideo: true
           });
           
           await peerConnection.setLocalDescription(offer);
           
-          socket.emit("offer", {
+          socket.emit("call-offer", {
             offer,
-            callId,
-            userType: "guest",
+            roomId: callId,
+            hostId: hostId,
+            guestId: "web-guest"
           });
           
-          console.log("Offer enviada al host");
+          console.log("📤 Offer WebRTC enviada");
           status.textContent = "Conectando con el host...";
-        } catch (e) {
-          console.error("Error creando offer:", e);
+
+        } catch (error) {
+          console.error("❌ Error iniciando WebRTC:", error);
           status.textContent = "Error de conexión";
+          
+          if (connectionAttempts < MAX_CONNECTION_ATTEMPTS) {
+            setTimeout(() => {
+              if (!isCallActive) {
+                console.log(`🔄 Reintento ${connectionAttempts}/${MAX_CONNECTION_ATTEMPTS}`);
+                initiateWebRTC();
+              }
+            }, 2000);
+          } else {
+            showError("No se pudo establecer la conexión. Intenta recargar la página.");
+          }
+        }
+      }
+
+      function handleHostRejection() {
+        console.log("❌ Host rechazó la llamada");
+        notificationStatus.textContent = "❌ Host rechazó la llamada";
+        notificationStatus.style.backgroundColor = "#dc3545";
+        status.textContent = "El host no está disponible en este momento";
+        
+        // Mostrar opción para dejar mensaje
+        setTimeout(() => {
+          waitingMessage.style.display = "block";
+          notificationStatus.style.display = "none";
+        }, 2000);
+      }
+
+      function handleCallTimeout() {
+        console.log("⏰ Timeout de llamada");
+        notificationStatus.textContent = "⏰ No hubo respuesta del host";
+        notificationStatus.style.backgroundColor = "#ffc107";
+        status.textContent = "El host no respondió a la llamada";
+        
+        // Mostrar opción para dejar mensaje
+        setTimeout(() => {
+          waitingMessage.style.display = "block";
+          notificationStatus.style.display = "none";
+        }, 2000);
+      }
+
+      async function sendMessageToHost() {
+        const message = document.getElementById("guestMessage").value.trim();
+        if (!message) {
+          alert("Por favor escribe un mensaje");
+          return;
+        }
+
+        try {
+          const response = await fetch("/messages/send", {
+            method: "POST",
+            headers: { 
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              callId: callId,
+              message: message
+            })
+          });
+
+          if (response.ok) {
+            alert("✅ Mensaje enviado correctamente. Te contactaremos pronto.");
+            closePage();
+          } else {
+            alert("❌ Error enviando mensaje");
+          }
+        } catch (error) {
+          console.error("Error enviando mensaje:", error);
+          alert("❌ Error de conexión");
         }
       }
 
       function endCall() {
-        status.textContent = "Finalizando llamada...";
+        console.log("📞 Finalizando llamada...");
+        isCallActive = false;
+        
         if (peerConnection) {
           peerConnection.close();
           peerConnection = null;
         }
+        
         if (localStream) {
-          localStream.getTracks().forEach((t) => t.stop());
+          localStream.getTracks().forEach((track) => track.stop());
           localStream = null;
         }
+        
         if (socket) {
           socket.emit("end-call", { callId });
           socket.disconnect();
-          socket = null;
         }
+        
         localVideo.srcObject = null;
         remoteVideo.srcObject = null;
         endCallButton.style.display = "none";
         notificationStatus.style.display = "none";
         status.textContent = "Llamada finalizada";
-        setTimeout(() => window.close(), 3000);
+        
+        setTimeout(() => {
+          window.close();
+        }, 3000);
       }
 
-      // ✅ EVENT LISTENERS (FALTABAN)
+      function closePage() {
+        if (socket) {
+          socket.emit("end-call", { callId });
+          socket.disconnect();
+        }
+        window.close();
+      }
+
+      function showError(message) {
+        const errorDiv = document.createElement("div");
+        errorDiv.className = "notification-badge error";
+        errorDiv.textContent = `❌ ${message}`;
+        errorDiv.style.margin = "20px auto";
+        errorDiv.style.display = "block";
+        
+        const container = document.querySelector(".container");
+        container.appendChild(errorDiv);
+        
+        setTimeout(() => {
+          errorDiv.remove();
+        }, 5000);
+      }
+
+      // ✅ EVENT LISTENERS
       endCallButton.addEventListener("click", endCall);
 
       window.addEventListener("beforeunload", () => {
-        if (socket) socket.emit("end-call", { callId });
+        if (socket && callId) {
+          socket.emit("end-call", { callId });
+        }
+      });
+
+      // Detectar cuando el usuario intenta salir
+      window.addEventListener("unload", () => {
+        if (socket && callId) {
+          // Enviar evento rápido antes de cerrar
+          navigator.sendBeacon && navigator.sendBeacon(
+            `${window.location.origin}/videocall/end-call`,
+            JSON.stringify({ callId })
+          );
+        }
       });
     </script>
   </body>

@@ -164,7 +164,7 @@ router.get('/config/:callId', authMiddleware, async (req, res) => {
 // routes/videocall.js - CORREGIR el endpoint anonymous-call
 router.post('/anonymous-call', async (req, res) => {
   try {
-    const { qrCode, guestName = "Visitante" } = req.body;
+    const { qrCode, guestName = "Visitante Web" } = req.body;
     console.log(`🎥 Llamada anónima recibida con QR: ${qrCode}`);
 
     if (!qrCode) {
@@ -178,39 +178,58 @@ router.post('/anonymous-call', async (req, res) => {
       return res.status(404).json({ error: 'Host no encontrado' });
     }
 
-    // ✅ CREAR CALL ID ÚNICO BASADO EN TIMESTAMP + QR
-    const callId = `web-${Date.now()}`;
+    // ✅ CREAR CALL ID ÚNICO SIN USAR "web-" que causa problemas
+    const callId = `anon-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // ✅ CORREGIDO: Crear llamada con callId específico
+    console.log(`✅ Creando llamada con ID: ${callId} para host: ${host.name}`);
+
+    // ✅ CORREGIDO: Crear llamada con callId como String
     const videoCall = await DoorbellCall.create({
-      _id: callId, // ✅ FORZAR EL callId específico
+      _id: callId, // ✅ Este es el ID de la llamada (String)
       hostId: host._id,
       guestId: null,
       guestName: guestName,
       guestEmail: 'anonimo@visitante.com',
       status: 'pending',
       callType: 'video',
-      qrCode: qrCode // Guardar también el QR para referencia
+      qrCode: qrCode,
+      isAnonymous: true
     });
 
     console.log(`🔔 Notificando a host: ${host.name} sobre llamada anónima`);
-    console.log(`🎯 Call ID creado: ${callId}`);
+    console.log(`🎯 Llamada creada exitosamente: ${callId}`);
 
-    // Notificar al host via WebSocket - ✅ ENVIAR EL callId CORRECTO
+    // Notificar al host via WebSocket
     const io = getIO();
-    io.to(host._id.toString()).emit('call-incoming', {
-      _id: callId, // ✅ Usar el mismo callId
-      guestName: guestName,
-      guestEmail: 'anonimo@visitante.com',
-      hostId: host._id,
-      createdAt: new Date().toISOString(),
-      status: 'pending',
-      isAnonymous: true
+    
+    // ✅ PRIMERO: Verificar si el host está conectado
+    const hostSocketId = hostRooms.get(host._id.toString());
+    console.log(`🔍 Host ${host._id} conectado? ${hostSocketId ? 'SÍ' : 'NO'}`);
+    
+    // ✅ ENVIAR NOTIFICACIÓN POR SOCKET
+    if (hostSocketId) {
+      io.to(`host-${host._id}`).emit('call-incoming', {
+        _id: callId,
+        guestName: guestName,
+        guestEmail: 'anonimo@visitante.com',
+        hostId: host._id,
+        createdAt: new Date().toISOString(),
+        status: 'pending',
+        isAnonymous: true
+      });
+      console.log(`📢 Notificación enviada por WebSocket a host-${host._id}`);
+    }
+
+    // ✅ TAMBIÉN EMITIR A LA SALA PARA EL POLLING DEL FRONTEND
+    io.emit('new-call-created', {
+      callId: callId,
+      hostId: host._id.toString(),
+      guestName: guestName
     });
 
     res.json({
       success: true,
-      callId: callId, // ✅ Devolver el callId real
+      callId: callId,
       hostId: host._id,
       hostName: host.name,
       message: 'Llamada iniciada correctamente'
@@ -218,7 +237,11 @@ router.post('/anonymous-call', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error en llamada anónima:', error);
-    res.status(500).json({ error: 'Error iniciando videollamada' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Error iniciando videollamada',
+      details: error.message 
+    });
   }
 });
 

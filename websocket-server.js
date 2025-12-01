@@ -14,6 +14,7 @@ function initializeWebSocket(server) {
   const rooms = new Map();
   const userSocketMap = new Map();
   const hostRooms = new Map(); // Mapa para hosts y sus salas de notificación
+  const callRooms = new Map(); // ✅ NUEVO: Mapa para seguimiento de llamadas activas
 
   io.on('connection', (socket) => {
     console.log('🔌 Usuario conectado:', socket.id);
@@ -36,6 +37,17 @@ function initializeWebSocket(server) {
       console.log('🔔📞 CALL-HOST recibido - Host ID:', hostId, 'Call ID:', call._id);
       console.log('🔔 Detalles call:', call);
 
+      // Guardar la llamada en el mapa de calls
+      if (call._id) {
+        callRooms.set(call._id, {
+          hostId: hostId.toString(),
+          guestId: call.guestId || null,
+          status: 'pending',
+          createdAt: new Date()
+        });
+        console.log(`📝 Call ${call._id} registrada en callRooms`);
+      }
+
       // Verificar si el host está en línea
       const hostSocketId = hostRooms.get(hostId.toString());
       console.log('🔔 Host socket ID encontrado:', hostSocketId);
@@ -45,13 +57,8 @@ function initializeWebSocket(server) {
         // Emitir a todos los sockets del host
         io.to(`host-${hostId}`).emit('call-incoming', call);
         console.log(`📢 Notificación enviada a host-${hostId}`);
-
-        // Verificar si se envió correctamente
-        const hostSockets = io.sockets.adapter.rooms.get(`host-${hostId}`);
-        console.log(`🔔 Sockets en sala host-${hostId}:`, hostSockets ? Array.from(hostSockets) : 'NINGUNO');
       } else {
         console.log(`❌ Host ${hostId} no encontrado en hostRooms`);
-        console.log('🔔 Host rooms disponibles:', Array.from(hostRooms.entries()));
       }
     });
 
