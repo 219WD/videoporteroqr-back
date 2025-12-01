@@ -2,6 +2,10 @@
 const socketIo = require('socket.io');
 
 let io;
+let hostRoomsInstance = null;
+let roomsInstance = null;
+let userSocketMapInstance = null;
+let callRoomsInstance = null;
 
 function initializeWebSocket(server) {
   io = socketIo(server, {
@@ -14,7 +18,13 @@ function initializeWebSocket(server) {
   const rooms = new Map();
   const userSocketMap = new Map();
   const hostRooms = new Map(); // Mapa para hosts y sus salas de notificación
-  const callRooms = new Map(); // ✅ NUEVO: Mapa para seguimiento de llamadas activas
+  const callRooms = new Map(); // ✅ Mapa para seguimiento de llamadas activas
+
+  // Guardar referencias globales para exportar
+  roomsInstance = rooms;
+  userSocketMapInstance = userSocketMap;
+  hostRoomsInstance = hostRooms;
+  callRoomsInstance = callRooms;
 
   io.on('connection', (socket) => {
     console.log('🔌 Usuario conectado:', socket.id);
@@ -67,12 +77,31 @@ function initializeWebSocket(server) {
       const { callId, response } = data;
       console.log('📞 Respuesta del host:', callId, response);
 
+      // Actualizar el estado en callRooms si existe
+      if (callRooms.has(callId)) {
+        const call = callRooms.get(callId);
+        call.status = 'answered';
+        call.response = response;
+        call.answeredAt = new Date();
+        console.log(`📝 Call ${callId} actualizada a ${response}`);
+      }
+
       // Emitir respuesta a todos (el guest estará escuchando)
       io.emit('call-response', {
         callId,
         response
       });
       console.log(`📢 Respuesta del host enviada para call ${callId}: ${response}`);
+
+      // También emitir a la sala específica si existe
+      const roomSockets = io.sockets.adapter.rooms.get(callId);
+      if (roomSockets) {
+        io.to(callId).emit('call-response', {
+          callId,
+          response
+        });
+        console.log(`📢 Respuesta también enviada a sala ${callId}`);
+      }
     });
 
     // ✅ USUARIO: Conectarse para videollamadas generales
@@ -182,8 +211,8 @@ function initializeWebSocket(server) {
           hostCameraEnabled: false,
           guestCameraEnabled: true,
           audioEnabled: true,
-          hostSocket: null,    // ✅ NUEVO: Guardar socket IDs
-          guestSocket: null    // ✅ NUEVO: Guardar socket IDs
+          hostSocket: null,    // ✅ Guardar socket IDs
+          guestSocket: null    // ✅ Guardar socket IDs
         });
       }
 
@@ -295,10 +324,10 @@ function initializeWebSocket(server) {
 
     // ✅ ENDPOINT DE DEBUG: Verificar salas
     socket.on('debug-rooms', () => {
-      const rooms = io.sockets.adapter.rooms;
+      const allRooms = io.sockets.adapter.rooms;
       console.log('🔍 SALAS ACTIVAS:');
 
-      rooms.forEach((sockets, roomName) => {
+      allRooms.forEach((sockets, roomName) => {
         if (!sockets.has(roomName)) { // Filtrar salas reales (no sockets individuales)
           console.log(`   - ${roomName}: ${sockets.size} usuarios`);
           console.log(`     Sockets: ${Array.from(sockets)}`);
@@ -359,6 +388,10 @@ function initializeWebSocket(server) {
       if (rooms.has(targetRoom)) {
         rooms.delete(targetRoom);
       }
+      
+      if (callRooms.has(targetRoom)) {
+        callRooms.delete(targetRoom);
+      }
     });
 
     // ✅ MENSAJES EN TIEMPO REAL
@@ -384,6 +417,26 @@ function initializeWebSocket(server) {
       });
 
       console.log(`🔍 Verificación de host ${hostId}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+    });
+
+    // ✅ NUEVO: Verificar estado de llamada específica
+    socket.on('check-call-status', (data) => {
+      const { callId } = data;
+      
+      if (callRooms.has(callId)) {
+        const call = callRooms.get(callId);
+        socket.emit('call-status-update', {
+          callId,
+          status: call.status,
+          response: call.response,
+          answeredAt: call.answeredAt
+        });
+      } else {
+        socket.emit('call-status-update', {
+          callId,
+          status: 'not_found'
+        });
+      }
     });
 
     // ✅ MANEJAR DESCONEXIÓN
@@ -483,8 +536,31 @@ function initializeWebSocket(server) {
       totalConnections: io.engine.clientsCount,
       hostRooms: hostRooms.size,
       callRooms: rooms.size,
-      userConnections: userSocketMap.size
+      userConnections: userSocketMap.size,
+      trackedCalls: callRooms.size
     };
+  }
+
+  // ✅ FUNCIONES EXPORTABLES
+
+  // Obtener hostRooms
+  function getHostRooms() {
+    return hostRoomsInstance;
+  }
+
+  // Obtener callRooms
+  function getCallRooms() {
+    return callRoomsInstance;
+  }
+
+  // Obtener rooms
+  function getRooms() {
+    return roomsInstance;
+  }
+
+  // Obtener userSocketMap
+  function getUserSocketMap() {
+    return userSocketMapInstance;
   }
 
   // ✅ EXPORTAR FUNCIONES DE UTILIDAD
@@ -511,7 +587,28 @@ function getIO() {
   return io;
 }
 
+// ✅ EXPORTAR FUNCIONES PARA ACCEDER A LOS MAPAS
+function getHostRooms() {
+  return hostRoomsInstance;
+}
+
+function getCallRooms() {
+  return callRoomsInstance;
+}
+
+function getRooms() {
+  return roomsInstance;
+}
+
+function getUserSocketMap() {
+  return userSocketMapInstance;
+}
+
 module.exports = {
   initializeWebSocket,
-  getIO
+  getIO,
+  getHostRooms,
+  getCallRooms,
+  getRooms,
+  getUserSocketMap
 };
