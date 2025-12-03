@@ -16,8 +16,24 @@ const messageSchema = new mongoose.Schema({
   }
 });
 
+const pushNotificationSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    required: true,
+    enum: ['initial', 'message', 'call', 'message_details', 'start_videocall']
+  },
+  sentAt: {
+    type: Date,
+    default: Date.now
+  },
+  status: {
+    type: String,
+    enum: ['sent', 'delivered', 'error'],
+    default: 'sent'
+  }
+});
+
 const doorbellCallSchema = new mongoose.Schema({
-  // ✅ CAMBIAR _id a String para aceptar IDs personalizados
   _id: {
     type: String,
     default: () => `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -47,8 +63,13 @@ const doorbellCallSchema = new mongoose.Schema({
   },
   callType: {
     type: String,
-    enum: ['doorbell', 'video'],
+    enum: ['doorbell', 'video', 'message'],
     default: 'doorbell'
+  },
+  actionType: {
+    type: String,
+    enum: ['call', 'message', 'direct_call'],
+    default: 'call'
   },
   response: {
     type: String,
@@ -58,18 +79,28 @@ const doorbellCallSchema = new mongoose.Schema({
   answeredAt: {
     type: Date
   },
-  qrCode: { // ✅ Añadir este campo para guardar el QR
+  qrCode: {
     type: String
   },
   isAnonymous: {
     type: Boolean,
     default: false
   },
-  messages: [messageSchema]
+  messageContent: {
+    type: String,
+    default: null
+  },
+  pushNotifications: [pushNotificationSchema],
+  firstNotificationAt: Date,
+  secondNotificationAt: Date,
+  messages: [messageSchema],
+  timeoutAt: {
+    type: Date,
+    default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
+  }
 }, {
   timestamps: true,
-  // ✅ DESACTIVAR LA GENERACIÓN AUTOMÁTICA DE _id
-  _id: false 
+  _id: false
 });
 
 module.exports = mongoose.model('DoorbellCall', doorbellCallSchema);

@@ -1,4 +1,3 @@
-// websocket-server.js - VERSIÓN COMPLETA CON NOTIFICACIONES EN TIEMPO REAL
 const socketIo = require('socket.io');
 
 let io;
@@ -17,10 +16,10 @@ function initializeWebSocket(server) {
 
   const rooms = new Map();
   const userSocketMap = new Map();
-  const hostRooms = new Map(); // Mapa para hosts y sus salas de notificación
-  const callRooms = new Map(); // ✅ Mapa para seguimiento de llamadas activas
+  const hostRooms = new Map();
+  const callRooms = new Map();
+  const flowRooms = new Map();
 
-  // Guardar referencias globales para exportar
   roomsInstance = rooms;
   userSocketMapInstance = userSocketMap;
   hostRoomsInstance = hostRooms;
@@ -34,18 +33,158 @@ function initializeWebSocket(server) {
       const { hostId } = data;
       console.log('🏠 Host unido a notificaciones:', hostId);
 
-      // Unir el socket a la sala del host
       socket.join(`host-${hostId}`);
       hostRooms.set(hostId.toString(), socket.id);
 
       console.log(`✅ Host ${hostId} listo para recibir notificaciones`);
     });
 
+    // ✅ HOST: Unirse para recibir flujos
+    socket.on('host-join-flows', (data) => {
+      const { hostId } = data;
+      console.log('🏠 Host unido a flujos:', hostId);
+
+      socket.join(`host-flows-${hostId}`);
+      
+      console.log(`✅ Host ${hostId} listo para recibir flujos`);
+    });
+
+    // ✅ GUEST: Iniciar flujo con mensaje
+    socket.on('start-message-flow', (data) => {
+      const { hostId, message, callId, guestName } = data;
+      console.log('📝 START-MESSAGE-FLOW - Host ID:', hostId, 'Message:', message);
+      
+      // Guardar en flowRooms
+      flowRooms.set(callId, {
+        hostId: hostId.toString(),
+        actionType: 'message',
+        status: 'pending',
+        message: message,
+        createdAt: new Date()
+      });
+
+      // Emitir notificación inicial al host
+      io.to(`host-${hostId}`).emit('flow-incoming', {
+        type: 'initial',
+        actionType: 'message',
+        callId: callId,
+        guestName: guestName || 'Visitante',
+        messagePreview: message ? message.substring(0, 100) + '...' : null,
+        urgency: 'high',
+        requiresAction: true,
+        timestamp: new Date().toISOString()
+      });
+
+      console.log(`📢 Notificación de mensaje enviada a host-${hostId}`);
+    });
+
+    // ✅ GUEST: Iniciar flujo con videollamada
+    socket.on('start-video-flow', (data) => {
+      const { hostId, call, guestName } = data;
+      console.log('🎥 START-VIDEO-FLOW - Host ID:', hostId, 'Call ID:', call._id);
+      
+      // Guardar en flowRooms
+      flowRooms.set(call._id, {
+        hostId: hostId.toString(),
+        actionType: 'call',
+        status: 'pending',
+        createdAt: new Date()
+      });
+
+      // Guardar también en callRooms para videollamada
+      callRooms.set(call._id, {
+        hostId: hostId.toString(),
+        guestId: call.guestId || null,
+        actionType: 'direct_call',
+        status: 'pending',
+        createdAt: new Date()
+      });
+
+      // Emitir notificación inicial al host
+      io.to(`host-${hostId}`).emit('flow-incoming', {
+        type: 'initial',
+        actionType: 'call',
+        callId: call._id,
+        guestName: guestName || 'Visitante',
+        urgency: 'high',
+        requiresAction: true,
+        timestamp: new Date().toISOString()
+      });
+
+      console.log(`📢 Notificación de videollamada enviada a host-${hostId}`);
+    });
+
+    // ✅ HOST: Solicitar detalles del mensaje
+    socket.on('request-message-details', (data) => {
+      const { callId, hostId } = data;
+      console.log('📩 Host solicita detalles del mensaje:', callId);
+      
+      const flow = flowRooms.get(callId);
+      if (flow && flow.actionType === 'message') {
+        // Emitir detalles del mensaje al host
+        io.to(`host-${hostId}`).emit('flow-message-details', {
+          type: 'message_details',
+          callId: callId,
+          guestName: flow.guestName || 'Visitante',
+          fullMessage: flow.message,
+          urgency: 'medium',
+          requiresResponse: true,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📢 Detalles de mensaje enviados a host-${hostId}`);
+      }
+    });
+
+    // ✅ HOST: Solicitar iniciar videollamada
+    socket.on('request-start-videocall', (data) => {
+      const { callId, hostId } = data;
+      console.log('📞 Host solicita iniciar videollamada:', callId);
+      
+      const flow = flowRooms.get(callId);
+      if (flow && flow.actionType === 'call') {
+        // Emitir notificación para iniciar videollamada
+        io.to(`host-${hostId}`).emit('flow-start-videocall', {
+          type: 'start_videocall',
+          callId: callId,
+          guestName: flow.guestName || 'Visitante',
+          urgency: 'high',
+          requiresAnswer: true,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📢 Notificación de videollamada enviada a host-${hostId}`);
+      }
+    });
+
+    // ✅ HOST: Responder al flujo
+    socket.on('flow-response', (data) => {
+      const { callId, response, hostMessage } = data;
+      console.log('📩 Host responde al flujo:', callId, 'Respuesta:', response);
+      
+      // Actualizar flowRooms
+      if (flowRooms.has(callId)) {
+        const flow = flowRooms.get(callId);
+        flow.status = response === 'accept' ? 'answered' : 'rejected';
+        flow.response = response;
+        flow.answeredAt = new Date();
+        
+        // Emitir respuesta al guest
+        io.emit('flow-response', {
+          callId: callId,
+          response: response,
+          hostMessage: hostMessage,
+          timestamp: new Date().toISOString()
+        });
+
+        console.log(`📢 Respuesta del host enviada para flujo ${callId}: ${response}`);
+      }
+    });
+
     // ✅ GUEST: Llamar al host - NOTIFICACIÓN EN TIEMPO REAL
     socket.on('call-host', (data) => {
       const { hostId, call } = data;
       console.log('🔔📞 CALL-HOST recibido - Host ID:', hostId, 'Call ID:', call._id);
-      console.log('🔔 Detalles call:', call);
 
       // Guardar la llamada en el mapa de calls
       if (call._id) {
@@ -61,7 +200,6 @@ function initializeWebSocket(server) {
       // Verificar si el host está en línea
       const hostSocketId = hostRooms.get(hostId.toString());
       console.log('🔔 Host socket ID encontrado:', hostSocketId);
-      console.log('🔔 Host rooms actuales:', Array.from(hostRooms.entries()));
 
       if (hostSocketId) {
         // Emitir a todos los sockets del host
@@ -193,17 +331,14 @@ function initializeWebSocket(server) {
 
       console.log(`🎥 Usuario ${userId || 'anonimo'} (${userRole}) uniéndose a sala ${callId}`);
 
-      // ✅ CORREGIDO: Verificar que userId exista
       if (userId) {
         userSocketMap.set(userId.toString(), socket.id);
       } else {
         console.log(`⚠️ Usuario anónimo uniéndose a sala ${callId}`);
       }
 
-      // Unirse a la sala
       socket.join(callId);
 
-      // Guardar información de la sala
       if (!rooms.has(callId)) {
         rooms.set(callId, {
           host: null,
@@ -211,8 +346,8 @@ function initializeWebSocket(server) {
           hostCameraEnabled: false,
           guestCameraEnabled: true,
           audioEnabled: true,
-          hostSocket: null,    // ✅ Guardar socket IDs
-          guestSocket: null    // ✅ Guardar socket IDs
+          hostSocket: null,
+          guestSocket: null
         });
       }
 
@@ -220,10 +355,9 @@ function initializeWebSocket(server) {
 
       if (userRole === 'host') {
         room.host = userId.toString();
-        room.hostSocket = socket.id; // ✅ Guardar socket del host
+        room.hostSocket = socket.id;
         console.log(`🏠 Host ${userId} unido a sala ${callId}`);
 
-        // ✅ NOTIFICAR A TODOS EN LA SALA que el host está listo
         io.to(callId).emit('host-ready', {
           callId,
           hostId: userId
@@ -231,10 +365,9 @@ function initializeWebSocket(server) {
 
       } else if (userRole === 'guest') {
         room.guest = userId.toString();
-        room.guestSocket = socket.id; // ✅ Guardar socket del guest
+        room.guestSocket = socket.id;
         console.log(`👤 Guest ${userId} unido a sala ${callId}`);
 
-        // ✅ NOTIFICAR A TODOS EN LA SALA que el guest se unió
         io.to(callId).emit('user-joined', {
           userId,
           userRole,
@@ -243,7 +376,6 @@ function initializeWebSocket(server) {
         });
       }
 
-      // ✅ MEJORADO: Enviar configuración actual de la sala al usuario
       socket.emit('room-config', {
         callId,
         userRole,
@@ -251,23 +383,20 @@ function initializeWebSocket(server) {
         audioEnabled: room.audioEnabled
       });
 
-      // ✅ MEJORADO: Si ambos usuarios están en la sala, notificar conexión establecida
       console.log(`🔍 Estado sala ${callId}: Host=${room.host ? 'Sí' : 'No'}, Guest=${room.guest ? 'Sí' : 'No'}`);
 
       if (room.host && room.guest) {
         console.log(`✅ AMBOS USUARIOS EN SALA ${callId}! Notificando conexión...`);
 
-        // ✅ Notificar a AMBOS usuarios que están conectados
         io.to(callId).emit('call-connected', {
           callId,
           hostId: room.host,
           guestId: room.guest
         });
 
-        // ✅ INICIAR WEBRTC AUTOMÁTICAMENTE cuando ambos están en la sala
         io.to(callId).emit('start-webrtc', {
           callId,
-          initiator: room.guestSocket // El guest inicia la oferta WebRTC
+          initiator: room.guestSocket
         });
       }
     });
@@ -277,7 +406,6 @@ function initializeWebSocket(server) {
       const { callId, targetUserId } = data;
       console.log(`🎯 Iniciando WebRTC offer en sala ${callId} para ${targetUserId}`);
 
-      // Notificar al target que inicie WebRTC
       if (targetUserId) {
         io.to(`user-${targetUserId}`).emit('initiate-webrtc', { callId });
       } else {
@@ -328,7 +456,7 @@ function initializeWebSocket(server) {
       console.log('🔍 SALAS ACTIVAS:');
 
       allRooms.forEach((sockets, roomName) => {
-        if (!sockets.has(roomName)) { // Filtrar salas reales (no sockets individuales)
+        if (!sockets.has(roomName)) {
           console.log(`   - ${roomName}: ${sockets.size} usuarios`);
           console.log(`     Sockets: ${Array.from(sockets)}`);
         }
@@ -392,6 +520,10 @@ function initializeWebSocket(server) {
       if (callRooms.has(targetRoom)) {
         callRooms.delete(targetRoom);
       }
+      
+      if (flowRooms.has(targetRoom)) {
+        flowRooms.delete(targetRoom);
+      }
     });
 
     // ✅ MENSAJES EN TIEMPO REAL
@@ -439,6 +571,27 @@ function initializeWebSocket(server) {
       }
     });
 
+    // ✅ NUEVO: Verificar estado de flujo
+    socket.on('check-flow-status', (data) => {
+      const { callId } = data;
+      
+      if (flowRooms.has(callId)) {
+        const flow = flowRooms.get(callId);
+        socket.emit('flow-status-update', {
+          callId,
+          status: flow.status,
+          actionType: flow.actionType,
+          response: flow.response,
+          answeredAt: flow.answeredAt
+        });
+      } else {
+        socket.emit('flow-status-update', {
+          callId,
+          status: 'not_found'
+        });
+      }
+    });
+
     // ✅ MANEJAR DESCONEXIÓN
     socket.on('disconnect', (reason) => {
       console.log('🔌 Usuario desconectado:', socket.id, 'Razón:', reason);
@@ -449,6 +602,14 @@ function initializeWebSocket(server) {
           hostRooms.delete(hostId);
           console.log(`🏠 Host ${hostId} desconectado`);
           break;
+        }
+      }
+
+      // Limpiar flow rooms
+      for (const [callId, flow] of flowRooms.entries()) {
+        if (flow.hostSocket === socket.id) {
+          flowRooms.delete(callId);
+          console.log(`🗑️ Flow ${callId} eliminado por desconexión`);
         }
       }
 
@@ -537,30 +698,30 @@ function initializeWebSocket(server) {
       hostRooms: hostRooms.size,
       callRooms: rooms.size,
       userConnections: userSocketMap.size,
-      trackedCalls: callRooms.size
+      trackedCalls: callRooms.size,
+      flowRooms: flowRooms.size
     };
   }
 
   // ✅ FUNCIONES EXPORTABLES
-
-  // Obtener hostRooms
   function getHostRooms() {
     return hostRoomsInstance;
   }
 
-  // Obtener callRooms
   function getCallRooms() {
     return callRoomsInstance;
   }
 
-  // Obtener rooms
   function getRooms() {
     return roomsInstance;
   }
 
-  // Obtener userSocketMap
   function getUserSocketMap() {
     return userSocketMapInstance;
+  }
+
+  function getFlowRooms() {
+    return flowRooms;
   }
 
   // ✅ EXPORTAR FUNCIONES DE UTILIDAD
@@ -568,6 +729,7 @@ function initializeWebSocket(server) {
   io.notifyUser = notifyUser;
   io.isHostOnline = isHostOnline;
   io.getServerStats = getServerStats;
+  io.getFlowRooms = getFlowRooms;
 
   console.log('🚀 Servidor WebSocket inicializado correctamente');
 
@@ -575,7 +737,7 @@ function initializeWebSocket(server) {
   setInterval(() => {
     const stats = getServerStats();
     console.log('📊 Estadísticas del servidor:', stats);
-  }, 60000); // Cada minuto
+  }, 60000);
 
   return io;
 }
@@ -587,7 +749,6 @@ function getIO() {
   return io;
 }
 
-// ✅ EXPORTAR FUNCIONES PARA ACCEDER A LOS MAPAS
 function getHostRooms() {
   return hostRoomsInstance;
 }
