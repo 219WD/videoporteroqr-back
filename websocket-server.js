@@ -639,6 +639,27 @@ socket.on('send-flow-message', (data) => {
       }
     });
 
+    // ✅ GUEST: Unirse a la sala específica del flujo para recibir respuestas en tiempo real
+    socket.on('join-flow-room', (data) => {
+      const { callId } = data;
+
+      if (!callId) {
+        console.warn('⚠️ Intento de unirse a flow sin callId');
+        return;
+      }
+
+      console.log(`👤 Guest uniéndose a sala de flujo: flow-${callId}`);
+      socket.join(`flow-${callId}`);
+
+      // Confirmación opcional al guest
+      socket.emit('flow-joined', {
+        callId,
+        message: 'Conectado al flujo. Esperando respuesta del anfitrión...'
+      });
+
+      console.log(`✅ Guest ahora está en la sala flow-${callId} y recibirá respuestas en tiempo real`);
+    });
+
     // ✅ MANEJAR DESCONEXIÓN
     socket.on('disconnect', (reason) => {
       console.log('🔌 Usuario desconectado:', socket.id, 'Razón:', reason);

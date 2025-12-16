@@ -72,7 +72,7 @@ router.post('/start', async (req, res) => {
     // Crear callId único
     const callId = `flow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Crear registro en base de datos con todos los datos del visitante
+    // Crear registro en base de datos
     const doorbellCall = await DoorbellCall.create({
       _id: callId,
       hostId: host._id,
@@ -93,7 +93,6 @@ router.post('/start', async (req, res) => {
         status: 'sent'
       }],
       firstNotificationAt: new Date(),
-      // Agregar mensaje inicial si existe
       messages: message ? [{
         sender: 'guest',
         message: message,
@@ -105,10 +104,8 @@ router.post('/start', async (req, res) => {
       guestName, guestEmail, guestPhone, guestCompany, hasMessage: !!message
     });
     
-    // Obtener WebSocket
     const io = getIO();
     
-    // ✅ 1. PRIMERA NOTIFICACIÓN: Sonido y vibración fuerte
     let notificationData = {
       type: 'initial',
       actionType: actionType,
@@ -135,11 +132,10 @@ router.post('/start', async (req, res) => {
       notificationData.fullMessage = message;
     }
     
-    // Enviar notificación por WebSocket
     io.to(`host-${host._id}`).emit('flow-incoming', notificationData);
     console.log(`📢 Notificación WebSocket enviada a host-${host._id} con datos del visitante`);
     
-    // ✅ 2. ENVIAR NOTIFICACIÓN PUSH
+    // PUSH NOTIFICATION
     if (host.pushToken) {
       let title, body, pushData;
       
@@ -182,13 +178,6 @@ router.post('/start', async (req, res) => {
       try {
         await sendExpoPush(host.pushToken, title, body, pushData);
         console.log('✅ Notificación push enviada con datos del visitante');
-        
-        // Actualizar estado en DB
-        doorbellCall.pushNotifications.push({
-          type: 'push',
-          status: 'sent'
-        });
-        await doorbellCall.save();
       } catch (pushError) {
         console.error('❌ Error enviando push:', pushError);
       }
@@ -533,7 +522,7 @@ router.post('/:callId/send-message', async (req, res) => {
 
 /**
  * POST /flows/respond
- * Host responde al flujo
+ * Host responde al flujo - CORREGIDO: emite a sala específica del flujo
  */
 router.post('/respond', async (req, res) => {
   try {
@@ -556,12 +545,10 @@ router.post('/respond', async (req, res) => {
       });
     }
     
-    // Actualizar estado
     doorbellCall.status = 'answered';
     doorbellCall.response = response;
     doorbellCall.answeredAt = new Date();
     
-    // Si el host envía un mensaje como respuesta
     if (hostMessage) {
       doorbellCall.messages.push({
         sender: 'host',
@@ -572,7 +559,6 @@ router.post('/respond', async (req, res) => {
     
     await doorbellCall.save();
     
-    // Notificar al guest vía WebSocket
     const io = getIO();
     const responseData = {
       callId: callId,
@@ -581,19 +567,18 @@ router.post('/respond', async (req, res) => {
       timestamp: new Date().toISOString()
     };
     
-    io.emit('flow-response', responseData);
-    console.log(`📢 Respuesta del flujo ${callId} enviada: ${response}`);
+    // Emitir SOLO a la sala del flujo (guest está escuchando ahí)
+    io.to(`flow-${callId}`).emit('flow-response', responseData);
+    console.log(`📢 Respuesta del flujo ${callId} enviada al guest: ${response}`);
     
-    // Si es videollamada y fue aceptada, notificar para unirse
-    if (response === 'accept' && doorbellCall.callType === 'video') {
-      io.emit('video-call-ready', {
+    // Si es videollamada y aceptada → evento específico
+    if (response === 'accept' && doorbellCall.actionType === 'call') {
+      io.to(`flow-${callId}`).emit('flow-host-accepted', {
         callId: callId,
-        hostId: doorbellCall.hostId,
-        guestName: doorbellCall.guestName,
-        message: 'El host aceptó la videollamada',
+        message: 'El anfitrión aceptó la videollamada',
         joinUrl: `/videocall/web?callId=${callId}`
       });
-      console.log(`✅ Videollamada ${callId} aceptada, notificando guest`);
+      console.log(`✅ Videollamada ${callId} aceptada, notificando guest para unirse`);
     }
     
     res.json({
