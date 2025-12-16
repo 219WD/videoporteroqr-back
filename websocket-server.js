@@ -50,69 +50,116 @@ function initializeWebSocket(server) {
     });
 
     // ✅ GUEST: Iniciar flujo con mensaje
-    socket.on('start-message-flow', (data) => {
-      const { hostId, message, callId, guestName } = data;
-      console.log('📝 START-MESSAGE-FLOW - Host ID:', hostId, 'Message:', message);
-      
-      // Guardar en flowRooms
-      flowRooms.set(callId, {
-        hostId: hostId.toString(),
-        actionType: 'message',
-        status: 'pending',
-        message: message,
-        createdAt: new Date()
-      });
+// En el evento 'start-message-flow' (línea ~110)
+socket.on('start-message-flow', (data) => {
+  const { hostId, message, callId, guestName, guestEmail, guestPhone, guestCompany } = data;
+  console.log('📝 START-MESSAGE-FLOW con datos del visitante:', { 
+    hostId, guestName, guestEmail, guestPhone, guestCompany 
+  });
+  
+  // Guardar en flowRooms con todos los datos
+  flowRooms.set(callId, {
+    hostId: hostId.toString(),
+    actionType: 'message',
+    status: 'pending',
+    message: message,
+    guestName: guestName,
+    guestEmail: guestEmail,
+    guestPhone: guestPhone,
+    guestCompany: guestCompany,
+    hasContactInfo: !!(guestName && guestEmail && guestName !== 'Visitante'),
+    createdAt: new Date()
+  });
 
-      // Emitir notificación inicial al host
-      io.to(`host-${hostId}`).emit('flow-incoming', {
-        type: 'initial',
-        actionType: 'message',
-        callId: callId,
-        guestName: guestName || 'Visitante',
-        messagePreview: message ? message.substring(0, 100) + '...' : null,
-        urgency: 'high',
-        requiresAction: true,
-        timestamp: new Date().toISOString()
-      });
+  // Emitir notificación inicial al host con todos los datos
+  io.to(`host-${hostId}`).emit('flow-incoming', {
+    type: 'initial',
+    actionType: 'message',
+    callId: callId,
+    guestName: guestName,
+    guestEmail: guestEmail,
+    guestPhone: guestPhone,
+    guestCompany: guestCompany,
+    hasContactInfo: !!(guestName && guestEmail && guestName !== 'Visitante'),
+    messagePreview: message ? message.substring(0, 100) + '...' : null,
+    urgency: 'high',
+    requiresAction: true,
+    timestamp: new Date().toISOString()
+  });
 
-      console.log(`📢 Notificación de mensaje enviada a host-${hostId}`);
-    });
+  console.log(`📢 Notificación de mensaje con datos del visitante enviada a host-${hostId}`);
+});
 
     // ✅ GUEST: Iniciar flujo con videollamada
-    socket.on('start-video-flow', (data) => {
-      const { hostId, call, guestName } = data;
-      console.log('🎥 START-VIDEO-FLOW - Host ID:', hostId, 'Call ID:', call._id);
-      
-      // Guardar en flowRooms
-      flowRooms.set(call._id, {
-        hostId: hostId.toString(),
-        actionType: 'call',
-        status: 'pending',
-        createdAt: new Date()
-      });
+socket.on('start-video-flow', (data) => {
+  const { hostId, call, guestName, guestEmail, guestPhone, guestCompany } = data;
+  console.log('🎥 START-VIDEO-FLOW con datos del visitante:', { 
+    hostId, guestName, guestEmail, guestPhone, guestCompany 
+  });
+  
+  // Guardar en flowRooms
+  flowRooms.set(call._id, {
+    hostId: hostId.toString(),
+    actionType: 'call',
+    status: 'pending',
+    guestName: guestName,
+    guestEmail: guestEmail,
+    guestPhone: guestPhone,
+    guestCompany: guestCompany,
+    hasContactInfo: !!(guestName && guestEmail && guestName !== 'Visitante'),
+    createdAt: new Date()
+  });
 
-      // Guardar también en callRooms para videollamada
-      callRooms.set(call._id, {
-        hostId: hostId.toString(),
-        guestId: call.guestId || null,
-        actionType: 'direct_call',
-        status: 'pending',
-        createdAt: new Date()
-      });
+  // Guardar también en callRooms para videollamada
+  callRooms.set(call._id, {
+    hostId: hostId.toString(),
+    guestId: call.guestId || null,
+    actionType: 'direct_call',
+    status: 'pending',
+    guestName: guestName,
+    guestEmail: guestEmail,
+    guestPhone: guestPhone,
+    guestCompany: guestCompany,
+    createdAt: new Date()
+  });
 
-      // Emitir notificación inicial al host
-      io.to(`host-${hostId}`).emit('flow-incoming', {
-        type: 'initial',
-        actionType: 'call',
-        callId: call._id,
-        guestName: guestName || 'Visitante',
-        urgency: 'high',
-        requiresAction: true,
-        timestamp: new Date().toISOString()
-      });
+  // Emitir notificación inicial al host
+  io.to(`host-${hostId}`).emit('flow-incoming', {
+    type: 'initial',
+    actionType: 'call',
+    callId: call._id,
+    guestName: guestName,
+    guestEmail: guestEmail,
+    guestPhone: guestPhone,
+    guestCompany: guestCompany,
+    hasContactInfo: !!(guestName && guestEmail && guestName !== 'Visitante'),
+    urgency: 'high',
+    requiresAction: true,
+    timestamp: new Date().toISOString()
+  });
 
-      console.log(`📢 Notificación de videollamada enviada a host-${hostId}`);
+  console.log(`📢 Notificación de videollamada con datos del visitante enviada a host-${hostId}`);
+});
+
+// Agregar después de los eventos existentes
+socket.on('send-flow-message', (data) => {
+  const { callId, message, sender = 'guest' } = data;
+  console.log(`💬 Mensaje adicional en flujo ${callId} por ${sender}`);
+  
+  const flow = flowRooms.get(callId);
+  if (flow) {
+    // Notificar al host
+    io.to(`host-${flow.hostId}`).emit('new-flow-message', {
+      callId: callId,
+      sender: sender,
+      message: message,
+      timestamp: new Date().toISOString(),
+      guestName: flow.guestName || 'Visitante'
     });
+    
+    console.log(`📢 Mensaje adicional notificado a host-${flow.hostId}`);
+  }
+});
 
     // ✅ HOST: Solicitar detalles del mensaje
     socket.on('request-message-details', (data) => {

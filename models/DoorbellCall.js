@@ -56,6 +56,14 @@ const doorbellCallSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  guestPhone: {
+    type: String,
+    default: null
+  },
+  guestCompany: {
+    type: String,
+    default: null
+  },
   status: {
     type: String,
     enum: ['pending', 'answered', 'timeout', 'rejected'],
@@ -83,6 +91,10 @@ const doorbellCallSchema = new mongoose.Schema({
     type: String
   },
   isAnonymous: {
+    type: Boolean,
+    default: false
+  },
+  guestDataProvided: {
     type: Boolean,
     default: false
   },

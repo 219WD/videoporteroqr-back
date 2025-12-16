@@ -11,9 +11,20 @@ const { sendExpoPush } = require('../services/notifications');
  */
 router.post('/start', async (req, res) => {
   try {
-    const { qrCode, actionType, message, guestName = "Visitante", isAnonymous = true } = req.body;
+    const { 
+      qrCode, 
+      actionType, 
+      message,
+      guestName = "Visitante", 
+      guestEmail = "anonimo@visitante.com",
+      guestPhone = null,
+      guestCompany = null,
+      isAnonymous = true 
+    } = req.body;
     
-    console.log('🚀 Iniciando flujo:', { qrCode, actionType, message, guestName, isAnonymous });
+    console.log('🚀 Iniciando flujo con datos del visitante:', { 
+      qrCode, actionType, guestName, guestEmail, guestPhone, guestCompany, isAnonymous 
+    });
     
     if (!qrCode) {
       return res.status(400).json({ 
@@ -27,6 +38,23 @@ router.post('/start', async (req, res) => {
         success: false,
         error: 'Tipo de acción inválida. Debe ser "message" o "call"' 
       });
+    }
+    
+    // Validar datos del visitante si no es anónimo
+    if (!isAnonymous) {
+      if (!guestName || guestName.trim() === '') {
+        return res.status(400).json({
+          success: false,
+          error: 'Nombre del visitante requerido'
+        });
+      }
+      
+      if (!guestEmail || guestEmail.trim() === '' || !guestEmail.includes('@')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Email válido requerido'
+        });
+      }
     }
     
     // Buscar host por QR
@@ -44,27 +72,38 @@ router.post('/start', async (req, res) => {
     // Crear callId único
     const callId = `flow-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Crear registro en base de datos
+    // Crear registro en base de datos con todos los datos del visitante
     const doorbellCall = await DoorbellCall.create({
       _id: callId,
       hostId: host._id,
       guestId: null,
       guestName: guestName,
-      guestEmail: isAnonymous ? 'anonimo@visitante.com' : req.user?.email || 'web@visitante.com',
+      guestEmail: guestEmail,
+      guestPhone: guestPhone,
+      guestCompany: guestCompany,
       status: 'pending',
       callType: actionType === 'call' ? 'video' : 'message',
       actionType: actionType,
-      messageContent: actionType === 'message' ? message : null,
+      messageContent: message,
       qrCode: qrCode,
       isAnonymous: isAnonymous,
+      guestDataProvided: !isAnonymous,
       pushNotifications: [{
         type: 'initial',
         status: 'sent'
       }],
-      firstNotificationAt: new Date()
+      firstNotificationAt: new Date(),
+      // Agregar mensaje inicial si existe
+      messages: message ? [{
+        sender: 'guest',
+        message: message,
+        timestamp: new Date()
+      }] : []
     });
     
-    console.log('✅ Registro creado en DB:', callId);
+    console.log('✅ Registro creado en DB:', callId, 'Con datos:', {
+      guestName, guestEmail, guestPhone, guestCompany, hasMessage: !!message
+    });
     
     // Obtener WebSocket
     const io = getIO();
@@ -75,6 +114,10 @@ router.post('/start', async (req, res) => {
       actionType: actionType,
       callId: callId,
       guestName: guestName,
+      guestEmail: guestEmail,
+      guestPhone: guestPhone,
+      guestCompany: guestCompany,
+      guestDataProvided: !isAnonymous,
       urgency: 'high',
       requiresAction: true,
       timestamp: new Date().toISOString()
@@ -83,6 +126,9 @@ router.post('/start', async (req, res) => {
     if (actionType === 'call') {
       notificationData.title = '📞 Videollamada entrante';
       notificationData.message = `${guestName} quiere iniciar una videollamada`;
+      if (!isAnonymous && guestCompany) {
+        notificationData.message += ` (${guestCompany})`;
+      }
     } else {
       notificationData.title = '📝 Mensaje nuevo';
       notificationData.messagePreview = message ? message.substring(0, 100) + '...' : null;
@@ -91,7 +137,7 @@ router.post('/start', async (req, res) => {
     
     // Enviar notificación por WebSocket
     io.to(`host-${host._id}`).emit('flow-incoming', notificationData);
-    console.log(`📢 Notificación WebSocket enviada a host-${host._id}`);
+    console.log(`📢 Notificación WebSocket enviada a host-${host._id} con datos del visitante`);
     
     // ✅ 2. ENVIAR NOTIFICACIÓN PUSH
     if (host.pushToken) {
@@ -100,22 +146,34 @@ router.post('/start', async (req, res) => {
       if (actionType === 'call') {
         title = '📞 Llamada entrante';
         body = `${guestName} quiere videollamarte`;
+        if (!isAnonymous && guestCompany) {
+          body += ` (${guestCompany})`;
+        }
         pushData = {
           type: 'flow',
           actionType: 'call',
           callId: callId,
           guestName: guestName,
+          guestEmail: guestEmail,
+          guestPhone: guestPhone,
+          guestCompany: guestCompany,
           sound: 'ringtone',
           priority: 'max'
         };
       } else {
         title = '📝 Mensaje nuevo';
         body = `${guestName}: ${message ? message.substring(0, 50) + '...' : 'Tiene un mensaje para ti'}`;
+        if (!isAnonymous && guestCompany) {
+          body += ` (${guestCompany})`;
+        }
         pushData = {
           type: 'flow',
           actionType: 'message',
           callId: callId,
           guestName: guestName,
+          guestEmail: guestEmail,
+          guestPhone: guestPhone,
+          guestCompany: guestCompany,
           sound: 'default',
           priority: 'high'
         };
@@ -123,7 +181,7 @@ router.post('/start', async (req, res) => {
       
       try {
         await sendExpoPush(host.pushToken, title, body, pushData);
-        console.log('✅ Notificación push enviada');
+        console.log('✅ Notificación push enviada con datos del visitante');
         
         // Actualizar estado en DB
         doorbellCall.pushNotifications.push({
@@ -142,6 +200,13 @@ router.post('/start', async (req, res) => {
       actionType: actionType,
       hostId: host._id,
       hostName: host.name,
+      guestData: {
+        name: guestName,
+        email: guestEmail,
+        phone: guestPhone,
+        company: guestCompany,
+        dataProvided: !isAnonymous
+      },
       message: 'Flujo iniciado correctamente',
       nextStep: actionType === 'message' ? 'waiting_for_host_response' : 'ready_for_videocall'
     });
@@ -356,6 +421,112 @@ router.post('/continue-call', async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: 'Error iniciando videollamada' 
+    });
+  }
+});
+
+/**
+ * GET /flows/:callId/messages
+ * Obtener mensajes de un flujo específico
+ */
+router.get('/:callId/messages', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    
+    console.log('📩 Obteniendo mensajes para flujo:', callId);
+    
+    const doorbellCall = await DoorbellCall.findById(callId);
+    if (!doorbellCall) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Flujo no encontrado' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      call: {
+        _id: doorbellCall._id,
+        guestName: doorbellCall.guestName,
+        guestEmail: doorbellCall.guestEmail,
+        guestPhone: doorbellCall.guestPhone,
+        guestCompany: doorbellCall.guestCompany,
+        isAnonymous: doorbellCall.isAnonymous,
+        guestDataProvided: doorbellCall.guestDataProvided,
+        createdAt: doorbellCall.createdAt,
+        status: doorbellCall.status,
+        actionType: doorbellCall.actionType
+      },
+      messages: doorbellCall.messages,
+      totalMessages: doorbellCall.messages.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo mensajes:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Error obteniendo mensajes' 
+    });
+  }
+});
+
+/**
+ * POST /flows/:callId/send-message
+ * Enviar mensaje adicional a un flujo existente
+ */
+router.post('/:callId/send-message', async (req, res) => {
+  try {
+    const { callId } = req.params;
+    const { message, sender = 'guest' } = req.body;
+    
+    console.log('📝 Enviando mensaje adicional a flujo:', callId, 'Sender:', sender);
+    
+    if (!message || message.trim() === '') {
+      return res.status(400).json({
+        success: false,
+        error: 'Mensaje requerido'
+      });
+    }
+    
+    const doorbellCall = await DoorbellCall.findById(callId);
+    if (!doorbellCall) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Flujo no encontrado' 
+      });
+    }
+    
+    // Agregar mensaje
+    doorbellCall.messages.push({
+      sender: sender,
+      message: message.trim(),
+      timestamp: new Date()
+    });
+    
+    await doorbellCall.save();
+    
+    // Notificar al host del nuevo mensaje
+    const io = getIO();
+    io.to(`host-${doorbellCall.hostId}`).emit('new-flow-message', {
+      callId: callId,
+      sender: sender,
+      message: message,
+      timestamp: new Date().toISOString(),
+      guestName: doorbellCall.guestName
+    });
+    
+    res.json({
+      success: true,
+      message: 'Mensaje enviado correctamente',
+      callId: callId,
+      totalMessages: doorbellCall.messages.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Error enviando mensaje:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Error enviando mensaje' 
     });
   }
 });
