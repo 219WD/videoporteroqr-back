@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Videollamada - Visitante</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #000;
+            color: white;
+            text-align: center;
+            padding: 50px;
+        }
+        #localVideo, #remoteVideo {
+            width: 80%;
+            max-width: 600px;
+            margin: 20px auto;
+            background: #333;
+            border-radius: 10px;
+        }
+        h1 {
+            color: #ffcc00;
+        }
+    </style>
+</head>
+<body>
+    <h1>📞 Videollamada en curso</h1>
+    <p>Conectando con el anfitrión...</p>
+
+    <video id="localVideo" autoplay playsinline muted></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+
+    <p id="status">Estado: Conectando...</p>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const callId = urlParams.get('callId');
+
+        if (!callId) {
+            document.getElementById('status').textContent = 'Error: No se encontró el ID de llamada';
+            document.body.innerHTML += '<p>Vuelve a escanear el QR.</p>';
+        } else {
+            document.getElementById('status').textContent = `Conectando a llamada: ${callId}`;
+
+            const socket = io();
+
+            socket.on('connect', () => {
+                console.log('Conectado como guest');
+                // ¡CRUCIAL! Unirse a la sala de videollamada como guest
+                socket.emit('join-call-room', {
+                    callId: callId,
+                    userRole: 'guest'
+                });
+            });
+
+            // Aquí iría el código WebRTC completo (lo agregamos después)
+            // Por ahora, solo confirmamos que entra
+            socket.on('host-ready', () => {
+                document.getElementById('status').textContent = '¡Anfitrión conectado! Iniciando videollamada...';
+            });
+
+            socket.on('call-connected', () => {
+                document.getElementById('status').textContent = '¡Videollamada conectada!';
+            });
+        }
+    </script>
+</body>
+</html>
