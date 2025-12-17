@@ -6,32 +6,75 @@
     <title>Videollamada - Visitante</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
             background: #000;
             color: white;
-            text-align: center;
-            padding: 50px;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
-        #localVideo, #remoteVideo {
-            width: 80%;
-            max-width: 600px;
-            margin: 20px auto;
-            background: #333;
+        #remoteVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        #localVideo {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border: 3px solid white;
             border-radius: 10px;
+            object-fit: cover;
+            z-index: 10;
         }
-        h1 {
-            color: #ffcc00;
+        .status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 15px;
+            border-radius: 10px;
+            z-index: 10;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 10;
+        }
+        .btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .btn.end {
+            background: red;
         }
     </style>
 </head>
 <body>
-    <h1>📞 Videollamada en curso</h1>
-    <p>Conectando con el anfitrión...</p>
-
-    <video id="localVideo" autoplay playsinline muted></video>
     <video id="remoteVideo" autoplay playsinline></video>
+    <video id="localVideo" autoplay playsinline muted></video>
 
-    <p id="status">Estado: Conectando...</p>
+    <div class="status" id="status">Conectando...</div>
+
+    <div class="controls">
+        <button class="btn" id="muteBtn">🎤</button>
+        <button class="btn" id="cameraBtn">📹</button>
+        <button class="btn end" id="endBtn">📞</button>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -40,31 +83,135 @@
 
         if (!callId) {
             document.getElementById('status').textContent = 'Error: No se encontró el ID de llamada';
-            document.body.innerHTML += '<p>Vuelve a escanear el QR.</p>';
-        } else {
-            document.getElementById('status').textContent = `Conectando a llamada: ${callId}`;
-
-            const socket = io();
-
-            socket.on('connect', () => {
-                console.log('Conectado como guest');
-                // ¡CRUCIAL! Unirse a la sala de videollamada como guest
-                socket.emit('join-call-room', {
-                    callId: callId,
-                    userRole: 'guest'
-                });
-            });
-
-            // Aquí iría el código WebRTC completo (lo agregamos después)
-            // Por ahora, solo confirmamos que entra
-            socket.on('host-ready', () => {
-                document.getElementById('status').textContent = '¡Anfitrión conectado! Iniciando videollamada...';
-            });
-
-            socket.on('call-connected', () => {
-                document.getElementById('status').textContent = '¡Videollamada conectada!';
-            });
+            document.body.innerHTML += '<p>Cierra esta pestaña y vuelve a intentarlo.</p>';
+            throw new Error('No callId');
         }
+
+        const socket = io();
+        let pc = null;
+        let localStream = null;
+
+        const statusEl = document.getElementById('status');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const localVideo = document.getElementById('localVideo');
+
+        // Unirse como guest
+        socket.on('connect', () => {
+            console.log('Guest conectado al servidor');
+            socket.emit('join-call-room', {
+                callId,
+                userRole: 'guest'
+            });
+            statusEl.textContent = 'Esperando al anfitrión...';
+        });
+
+        // Iniciar cámara y micrófono
+        async function startLocalStream() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                localVideo.srcObject = localStream;
+                statusEl.textContent = 'Cámara lista. Esperando conexión...';
+            } catch (err) {
+                console.error('Error cámara:', err);
+                statusEl.textContent = 'Error: No se pudo acceder a cámara/mic';
+            }
+        }
+
+        startLocalStream();
+
+        // Crear conexión WebRTC
+        function createPeerConnection() {
+            pc = new RTCPeerConnection({
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+                    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+                ]
+            });
+
+            // Agregar tracks locales
+            if (localStream) {
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            }
+
+            pc.ontrack = (event) => {
+                console.log('Recibiendo stream remoto');
+                remoteVideo.srcObject = event.streams[0];
+                statusEl.textContent = '¡Conectado! Videollamada en curso';
+            };
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    socket.emit('ice-candidate', {
+                        callId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                console.log('Estado conexión:', pc.connectionState);
+                if (pc.connectionState === 'failed') {
+                    statusEl.textContent = 'Conexión fallida. Intenta de nuevo.';
+                }
+            };
+        }
+
+        // Cuando el host está listo, iniciar oferta
+        socket.on('host-ready', () => {
+            statusEl.textContent = 'Anfitrión conectado. Iniciando videollamada...';
+            createPeerConnection();
+
+            // El guest inicia la oferta
+            pc.createOffer()
+                .then(offer => pc.setLocalDescription(offer))
+                .then(() => {
+                    socket.emit('call-offer', {
+                        offer: pc.localDescription,
+                        roomId: callId
+                    });
+                });
+        });
+
+        // Recibir answer del host
+        socket.on('answer', (data) => {
+            if (pc && !pc.currentRemoteDescription) {
+                pc.setRemoteDescription(data.answer);
+            }
+        });
+
+        // ICE candidates
+        socket.on('ice-candidate', (data) => {
+            if (pc && data.candidate) {
+                pc.addIceCandidate(data.candidate);
+            }
+        });
+
+        // Finalizar llamada
+        document.getElementById('endBtn').onclick = () => {
+            socket.emit('end-call', { callId });
+            window.close();
+        };
+
+        // Controles
+        document.getElementById('muteBtn').onclick = () => {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    audioTrack.enabled = !audioTrack.enabled;
+                }
+            }
+        };
+
+        document.getElementById('cameraBtn').onclick = () => {
+            if (localStream) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    videoTrack.enabled = !videoTrack.enabled;
+                }
+            }
+        };
     </script>
 </body>
 </html>
