@@ -382,17 +382,13 @@ function initializeWebSocket(server) {
     // ✅ SALA DE VIDEOCALL: Unirse a sala específica
     socket.on('join-call-room', async (data) => {
       const { callId, userId, userRole } = data;
-
       console.log(`🎥 Usuario ${userId || 'anonimo'} (${userRole}) uniéndose a sala ${callId}`);
-
       if (userId) {
         userSocketMap.set(userId.toString(), socket.id);
       } else {
         console.log(`⚠️ Usuario anónimo uniéndose a sala ${callId}`);
       }
-
       socket.join(callId);
-
       if (!rooms.has(callId)) {
         rooms.set(callId, {
           host: null,
@@ -404,50 +400,44 @@ function initializeWebSocket(server) {
           guestSocket: null
         });
       }
-
       const room = rooms.get(callId);
-
       if (userRole === 'host') {
         room.host = userId.toString();
         room.hostSocket = socket.id;
         console.log(`🏠 Host ${userId} unido a sala ${callId}`);
-
         io.to(callId).emit('host-ready', {
           callId,
           hostId: userId
         });
-
       } else if (userRole === 'guest') {
         room.guest = userId.toString();
         room.guestSocket = socket.id;
         console.log(`👤 Guest ${userId} unido a sala ${callId}`);
-
         io.to(callId).emit('user-joined', {
           userId,
           userRole,
           callId,
           cameraEnabled: room.guestCameraEnabled
         });
-      }
 
+        // NOTIFICAR AL HOST QUE EL GUEST ESTÁ LISTO
+        io.to(callId).emit('guest-joined-call', { callId });
+        console.log(`📢 Guest listo en sala ${callId}, notificando al host`);
+      }
       socket.emit('room-config', {
         callId,
         userRole,
         cameraEnabled: userRole === 'guest' ? room.guestCameraEnabled : room.hostCameraEnabled,
         audioEnabled: room.audioEnabled
       });
-
       console.log(`🔍 Estado sala ${callId}: Host=${room.host ? 'Sí' : 'No'}, Guest=${room.guest ? 'Sí' : 'No'}`);
-
       if (room.host && room.guest) {
         console.log(`✅ AMBOS USUARIOS EN SALA ${callId}! Notificando conexión...`);
-
         io.to(callId).emit('call-connected', {
           callId,
           hostId: room.host,
           guestId: room.guest
         });
-
         io.to(callId).emit('start-webrtc', {
           callId,
           initiator: room.guestSocket

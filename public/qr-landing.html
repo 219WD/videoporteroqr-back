@@ -11,7 +11,7 @@
             box-sizing: border-box;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
         }
-       
+      
         body {
             background: linear-gradient(135deg, #7d1522 0%, #3d3d3d 100%);
             color: white;
@@ -23,7 +23,7 @@
             position: relative;
             overflow-x: hidden;
         }
-       
+      
         body::before {
             content: '';
             position: fixed;
@@ -37,7 +37,7 @@
             pointer-events: none;
             z-index: 0;
         }
-       
+      
         .container {
             max-width: 500px;
             width: 100%;
@@ -45,12 +45,12 @@
             position: relative;
             z-index: 1;
         }
-       
+      
         .logo-container {
             margin: 30px 0;
             position: relative;
         }
-       
+      
         .logo {
             font-size: 2.8rem;
             font-weight: bold;
@@ -63,12 +63,12 @@
             backdrop-filter: blur(10px);
             border: 2px solid rgba(255, 204, 0, 0.3);
         }
-       
+      
         .logo::before {
             content: '🚪';
             margin-right: 10px;
         }
-       
+      
         .host-info {
             background: rgba(255, 255, 255, 0.15);
             border-radius: 20px;
@@ -79,25 +79,25 @@
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
             transition: transform 0.3s ease;
         }
-       
+      
         .host-info:hover {
             transform: translateY(-5px);
         }
-       
+      
         .host-icon {
             font-size: 3rem;
             margin-bottom: 15px;
             color: #ffcc00;
             text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
-       
+      
         .host-name {
             font-size: 1.8rem;
             margin-bottom: 10px;
             color: #ffcc00;
             font-weight: 600;
         }
-       
+      
         .welcome-text {
             font-size: 1.3rem;
             margin-bottom: 40px;
@@ -105,7 +105,7 @@
             line-height: 1.6;
             padding: 0 10px;
         }
-       
+      
         .welcome-text::after {
             content: '';
             display: block;
@@ -115,7 +115,7 @@
             margin: 20px auto;
             border-radius: 2px;
         }
-       
+      
         .options-title {
             font-size: 1.4rem;
             margin-bottom: 25px;
@@ -124,14 +124,14 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-       
+      
         .options-container {
             display: flex;
             flex-direction: column;
             gap: 25px;
             margin-bottom: 40px;
         }
-       
+      
         .option-card {
             background: rgba(255, 255, 255, 0.95);
             color: #333;
@@ -148,7 +148,7 @@
             overflow: hidden;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
         }
-       
+      
         .option-card::before {
             content: '';
             position: absolute;
@@ -160,62 +160,62 @@
             opacity: 0;
             transition: opacity 0.3s ease;
         }
-       
+      
         .option-card:hover {
             transform: translateY(-8px) scale(1.02);
             box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
         }
-       
+      
         .option-card:hover::before {
             opacity: 1;
         }
-       
+      
         .option-card.call {
             border-color: #28a745;
             color: #28a745;
         }
-       
+      
         .option-card.call:hover {
             background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(255, 255, 255, 0.95) 100%);
         }
-       
+      
         .option-card.message {
             border-color: #17a2b8;
             color: #17a2b8;
         }
-       
+      
         .option-card.message:hover {
             background: linear-gradient(135deg, rgba(23, 162, 184, 0.1) 0%, rgba(255, 255, 255, 0.95) 100%);
         }
-       
+      
         .option-icon {
             font-size: 3.5rem;
             flex-shrink: 0;
             transition: transform 0.3s ease;
             filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
         }
-       
+      
         .option-card:hover .option-icon {
             transform: scale(1.1) rotate(5deg);
         }
-       
+      
         .option-content {
             flex-grow: 1;
         }
-       
+      
         .option-title {
             font-size: 1.5rem;
             font-weight: bold;
             margin-bottom: 8px;
             color: #7d1522;
         }
-       
+      
         .option-description {
             color: #666;
             font-size: 1rem;
             line-height: 1.5;
         }
-       
+      
         .option-badge {
             position: absolute;
             top: -10px;
@@ -230,7 +230,7 @@
             letter-spacing: 0.5px;
             box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
         }
-       
+      
         /* Nuevo formulario para datos del visitante */
         .guest-form {
             background: rgba(255, 255, 255, 0.95);
@@ -243,7 +243,7 @@
             border: 2px solid #17a2b8;
             display: none;
         }
-       
+      
         .form-title {
             font-size: 1.5rem;
             margin-bottom: 25px;
@@ -251,12 +251,12 @@
             text-align: center;
             font-weight: 600;
         }
-       
+      
         .form-group {
             margin-bottom: 20px;
             text-align: left;
         }
-       
+      
         .form-group label {
             display: block;
             margin-bottom: 8px;
@@ -264,12 +264,12 @@
             font-weight: 500;
             font-size: 1rem;
         }
-       
+      
         .form-group.required label::after {
             content: ' *';
             color: #dc3545;
         }
-       
+      
         .form-group input,
         .form-group textarea {
             width: 100%;
@@ -280,56 +280,56 @@
             transition: all 0.3s ease;
             background: white;
         }
-       
+      
         .form-group input:focus,
         .form-group textarea:focus {
             outline: none;
             border-color: #17a2b8;
             box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.2);
         }
-       
+      
         .form-group input::placeholder,
         .form-group textarea::placeholder {
             color: #aaa;
             font-style: italic;
         }
-       
+      
         .form-group input.error,
         .form-group textarea.error {
             border-color: #dc3545;
         }
-       
+      
         .error-text {
             color: #dc3545;
             font-size: 0.85rem;
             margin-top: 5px;
             display: none;
         }
-       
+      
         .char-counter {
             text-align: right;
             font-size: 0.9rem;
             color: #666;
             margin-top: 5px;
         }
-       
+      
         .char-counter.warning {
             color: #ff9800;
             font-weight: bold;
         }
-       
+      
         .char-counter.error {
             color: #dc3545;
             font-weight: bold;
         }
-       
+      
         .form-buttons {
             display: flex;
             gap: 15px;
             justify-content: flex-end;
             margin-top: 25px;
         }
-       
+      
         .message-box {
             display: none;
             background: rgba(255, 255, 255, 0.95);
@@ -341,7 +341,7 @@
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             border: 2px solid #17a2b8;
         }
-       
+      
         @keyframes slideUp {
             from {
                 opacity: 0;
@@ -352,7 +352,7 @@
                 transform: translateY(0);
             }
         }
-       
+      
         .message-title {
             font-size: 1.5rem;
             margin-bottom: 20px;
@@ -360,7 +360,7 @@
             text-align: center;
             font-weight: 600;
         }
-       
+      
         .message-box textarea {
             width: 100%;
             height: 150px;
@@ -374,19 +374,19 @@
             line-height: 1.5;
             background: rgba(255, 255, 255, 0.9);
         }
-       
+      
         .message-box textarea:focus {
             outline: none;
             border-color: #17a2b8;
             box-shadow: 0 0 0 3px rgba(23, 162, 184, 0.2);
             background: white;
         }
-       
+      
         .message-box textarea::placeholder {
             color: #aaa;
             font-style: italic;
         }
-       
+      
         .message-examples {
             background: rgba(23, 162, 184, 0.1);
             border-radius: 10px;
@@ -394,39 +394,39 @@
             margin-bottom: 20px;
             text-align: left;
         }
-       
+      
         .message-examples h4 {
             color: #17a2b8;
             margin-bottom: 10px;
             font-size: 1rem;
         }
-       
+      
         .message-examples ul {
             list-style: none;
             padding-left: 0;
         }
-       
+      
         .message-examples li {
             padding: 5px 0;
             color: #666;
             font-size: 0.9rem;
             border-bottom: 1px solid rgba(23, 162, 184, 0.2);
         }
-       
+      
         .message-examples li:last-child {
             border-bottom: none;
         }
-       
+      
         .message-examples li::before {
             content: '💡 ';
         }
-       
+      
         .buttons {
             display: flex;
             gap: 15px;
             justify-content: flex-end;
         }
-       
+      
         .btn {
             padding: 14px 28px;
             border: none;
@@ -441,40 +441,40 @@
             gap: 10px;
             min-width: 140px;
         }
-       
+      
         .btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
-       
+      
         .btn:active {
             transform: translateY(0);
         }
-       
+      
         .btn-primary {
             background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
             color: white;
         }
-       
+      
         .btn-secondary {
             background: linear-gradient(135deg, #6c757d 0%, #545b62 100%);
             color: white;
         }
-       
+      
         .btn-success {
             background: linear-gradient(135deg, #28a745 0%, #218838 100%);
             color: white;
         }
-       
+      
         .btn-danger {
             background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
             color: white;
         }
-       
+      
         .btn-icon {
             font-size: 1.2rem;
         }
-       
+      
         .status-message {
             background: rgba(255, 255, 255, 0.15);
             border-radius: 15px;
@@ -485,62 +485,62 @@
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-       
+      
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
         }
-       
+      
         .status-message.success {
             background: rgba(40, 167, 69, 0.2);
             border-left: 5px solid #28a745;
             color: #d4edda;
         }
-       
+      
         .status-message.error {
             background: rgba(220, 53, 69, 0.2);
             border-left: 5px solid #dc3545;
             color: #f8d7da;
         }
-       
+      
         .status-message.info {
             background: rgba(23, 162, 184, 0.2);
             border-left: 5px solid #17a2b8;
             color: #d1ecf1;
         }
-       
+      
         .status-message.warning {
             background: rgba(255, 193, 7, 0.2);
             border-left: 5px solid #ffc107;
             color: #fff3cd;
         }
-       
+      
         .status-content {
             display: flex;
             align-items: center;
             gap: 15px;
         }
-       
+      
         .status-icon {
             font-size: 2rem;
         }
-       
+      
         .status-text {
             flex-grow: 1;
             text-align: left;
         }
-       
+      
         .status-title {
             font-size: 1.2rem;
             font-weight: bold;
             margin-bottom: 5px;
         }
-       
+      
         .status-description {
             font-size: 1rem;
             opacity: 0.9;
         }
-       
+      
         .loading {
             display: inline-block;
             width: 24px;
@@ -550,21 +550,21 @@
             border-top-color: #ffcc00;
             animation: spin 1s ease-in-out infinite;
         }
-       
+      
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-       
+      
         .pulse {
             animation: pulse 1.5s ease-in-out infinite;
         }
-       
+      
         @keyframes pulse {
             0% { transform: scale(1); }
             50% { transform: scale(1.05); }
             100% { transform: scale(1); }
         }
-       
+      
         .footer {
             margin-top: 40px;
             padding-top: 20px;
@@ -574,7 +574,7 @@
             text-align: center;
             width: 100%;
         }
-       
+      
         .connection-status {
             position: fixed;
             bottom: 20px;
@@ -589,54 +589,54 @@
             gap: 8px;
             z-index: 100;
         }
-       
+      
         .connection-dot {
             width: 10px;
             height: 10px;
             border-radius: 50%;
             background: #dc3545;
         }
-       
+      
         .connection-dot.connected {
             background: #28a745;
             animation: pulse 2s infinite;
         }
-       
+      
         @media (max-width: 600px) {
             .container {
                 padding: 0 15px;
             }
-           
+          
             .logo {
                 font-size: 2.2rem;
                 padding: 8px 16px;
             }
-           
+          
             .host-info {
                 padding: 20px;
             }
-           
+          
             .option-card {
                 padding: 20px;
                 flex-direction: column;
                 text-align: center;
                 gap: 15px;
             }
-           
+          
             .option-icon {
                 font-size: 3rem;
             }
-           
+          
             .guest-form,
             .message-box {
                 padding: 20px;
             }
-           
+          
             .form-buttons,
             .buttons {
                 flex-direction: column;
             }
-           
+          
             .btn {
                 width: 100%;
             }
@@ -648,21 +648,21 @@
         <div class="logo-container">
             <div class="logo">VideoPortero</div>
         </div>
-       
+      
         <div class="host-info">
             <div class="host-icon">🏠</div>
             <div class="host-name" id="hostName">Cargando información del host...</div>
             <div>Has escaneado el código QR de este anfitrión</div>
         </div>
-       
+      
         <div class="welcome-text">
             Selecciona cómo te gustaría contactar con el anfitrión
         </div>
-       
+      
         <div class="options-title">
             Elige una opción
         </div>
-       
+      
         <div class="options-container" id="optionsContainer">
             <div class="option-card call" onclick="selectOption('call')">
                 <div class="option-icon">📞</div>
@@ -675,7 +675,7 @@
                 </div>
                 <div class="option-badge">Inmediato</div>
             </div>
-           
+          
             <div class="option-card message" onclick="selectOption('message')">
                 <div class="option-icon">📝</div>
                 <div class="option-content">
@@ -688,33 +688,33 @@
                 <div class="option-badge">2 Pasos</div>
             </div>
         </div>
-       
+      
         <!-- Formulario para datos del visitante -->
         <div class="guest-form" id="guestForm">
             <div class="form-title">👤 Información de contacto</div>
-           
+          
             <div class="form-group required">
                 <label for="guestName">Nombre completo</label>
                 <input type="text" id="guestName" placeholder="Tu nombre">
                 <div class="error-text" id="nameError">Por favor, ingresa tu nombre</div>
             </div>
-           
+          
             <div class="form-group required">
                 <label for="guestEmail">Email</label>
                 <input type="email" id="guestEmail" placeholder="tu@email.com">
                 <div class="error-text" id="emailError">Por favor, ingresa un email válido</div>
             </div>
-           
+          
             <div class="form-group">
                 <label for="guestPhone">Teléfono (opcional)</label>
                 <input type="tel" id="guestPhone" placeholder="+34 123 456 789">
             </div>
-           
+          
             <div class="form-group">
                 <label for="guestCompany">Empresa/Organización (opcional)</label>
                 <input type="text" id="guestCompany" placeholder="Nombre de tu empresa">
             </div>
-           
+          
             <div class="form-group" id="messageGroup" style="display: none;">
                 <label for="guestMessage" class="required">Mensaje</label>
                 <textarea id="guestMessage" placeholder="Escribe tu mensaje aquí..." rows="4"></textarea>
@@ -722,7 +722,7 @@
                     <span id="messageCharCount">0</span> / 500 caracteres
                 </div>
                 <div class="error-text" id="messageError">Por favor, escribe un mensaje</div>
-               
+              
                 <div class="message-examples">
                     <h4>Ejemplos de mensajes:</h4>
                     <ul>
@@ -733,7 +733,7 @@
                     </ul>
                 </div>
             </div>
-           
+          
             <div class="form-buttons">
                 <button class="btn btn-secondary" onclick="cancelForm()">
                     <span class="btn-icon">↩️</span>
@@ -745,11 +745,11 @@
                 </button>
             </div>
         </div>
-       
+      
         <!-- Caja de mensaje antiguo (para compatibilidad anónima) -->
         <div class="message-box" id="messageBox">
             <div class="message-title">📝 Escribe tu mensaje</div>
-           
+          
             <div class="message-examples">
                 <h4>Ejemplos de mensajes:</h4>
                     <ul>
@@ -759,19 +759,19 @@
                         <li>¿Podrías venir a recibirme, por favor?</li>
                     </ul>
             </div>
-           
+          
             <textarea id="messageText"
                       placeholder="Escribe tu mensaje aquí...
-                     
+                    
 Ejemplo: Hola, soy [tu nombre]. [Explica brevemente tu motivo].
-                     
+                    
 Máximo 500 caracteres."
                       maxlength="500"></textarea>
-           
+          
             <div class="char-counter" id="charCounter">
                 <span id="charCount">0</span> / 500 caracteres
             </div>
-           
+          
             <div class="buttons">
                 <button class="btn btn-secondary" onclick="cancelMessage()">
                     <span class="btn-icon">↩️</span>
@@ -783,7 +783,7 @@ Máximo 500 caracteres."
                 </button>
             </div>
         </div>
-       
+      
         <div class="status-message" id="statusMessage">
             <div class="status-content">
                 <div class="status-icon" id="statusIcon">⏳</div>
@@ -794,7 +794,7 @@ Máximo 500 caracteres."
                 <div class="loading" id="statusLoading" style="display: none;"></div>
             </div>
         </div>
-       
+      
         <div class="footer">
             VideoPortero © 2024 - Sistema de videollamadas seguro
         </div>
@@ -994,9 +994,11 @@ Máximo 500 caracteres."
 
                 if (data.response === 'accept') {
                     if (selectedAction === 'call') {
-                        showSuccess('✅ Videollamada aceptada. Conectando...', false);
+                        showSuccess('✅ El anfitrión aceptó la videollamada', false);
                         setTimeout(() => {
-                            window.location.href = `/videocall/web?callId=${callId}`;
+                            // ABRIR EN NUEVA PESTAÑA → NO RECARGA ESTA PÁGINA → NO SE DESCONECTA
+                            window.open(`/videocall/web?callId=${callId}`, '_blank');
+                            showInfo('📹 Videollamada abierta en nueva pestaña. Puedes cerrar esta cuando quieras.', false);
                         }, 1500);
                     } else {
                         showSuccess('✅ Mensaje entregado', false);
@@ -1013,9 +1015,10 @@ Máximo 500 caracteres."
 
             socket.on('flow-host-accepted', (data) => {
                 if (data.callId === callId) {
-                    showSuccess('✅ Videollamada aceptada. Conectando...', false);
+                    showSuccess('✅ Videollamada aceptada', false);
                     setTimeout(() => {
-                        window.location.href = `/videocall/web?callId=${callId}`;
+                        window.open(`/videocall/web?callId=${callId}`, '_blank');
+                        showInfo('📹 Videollamada abierta en nueva pestaña.', false);
                     }, 1000);
                 }
             });
@@ -1137,7 +1140,7 @@ Máximo 500 caracteres."
             if (data.success) {
                 callId = data.callId;
 
-                // ¡CRUCIAL! Unirse a la sala del flujo
+                // Unirse a la sala del flujo
                 socket.emit('join-flow-room', { callId });
 
                 showInfo(
