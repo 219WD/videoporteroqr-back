@@ -50,20 +50,21 @@ const doorbellCallSchema = new mongoose.Schema({
   },
   guestName: {
     type: String,
-    required: true
+    required: true,
+    default: 'Visitante'
   },
-  guestEmail: {
-    type: String,
-    required: true
-  },
-  guestPhone: {
-    type: String,
-    default: null
-  },
-  guestCompany: {
-    type: String,
-    default: null
-  },
+  // guestEmail: {
+  //   type: String,
+  //   required: true
+  // },
+  // guestPhone: {
+  //   type: String,
+  //   default: null
+  // },
+  // guestCompany: {
+  //   type: String,
+  //   default: null
+  // },
   status: {
     type: String,
     enum: ['pending', 'answered', 'timeout', 'rejected'],
@@ -92,7 +93,7 @@ const doorbellCallSchema = new mongoose.Schema({
   },
   isAnonymous: {
     type: Boolean,
-    default: false
+    default: true
   },
   guestDataProvided: {
     type: Boolean,
