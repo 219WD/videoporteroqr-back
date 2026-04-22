@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('uuid');
 
 const messageSchema = new mongoose.Schema({
   sender: {
@@ -16,27 +17,10 @@ const messageSchema = new mongoose.Schema({
   }
 });
 
-const pushNotificationSchema = new mongoose.Schema({
-  type: {
-    type: String,
-    required: true,
-    enum: ['initial', 'message', 'call', 'message_details', 'start_videocall']
-  },
-  sentAt: {
-    type: Date,
-    default: Date.now
-  },
-  status: {
-    type: String,
-    enum: ['sent', 'delivered', 'error'],
-    default: 'sent'
-  }
-});
-
 const doorbellCallSchema = new mongoose.Schema({
   _id: {
     type: String,
-    default: () => `call-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    default: () => `call-${uuidv4()}`
   },
   hostId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -103,17 +87,22 @@ const doorbellCallSchema = new mongoose.Schema({
     type: String,
     default: null
   },
-  pushNotifications: [pushNotificationSchema],
   firstNotificationAt: Date,
   secondNotificationAt: Date,
   messages: [messageSchema],
   timeoutAt: {
     type: Date,
-    default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
+    default: () => new Date(Date.now() + 24 * 60 * 60 * 1000)
   }
 }, {
   timestamps: true,
   _id: false
 });
 
+doorbellCallSchema.index({ hostId: 1, status: 1, createdAt: -1 });
+doorbellCallSchema.index({ guestId: 1, createdAt: -1 });
+doorbellCallSchema.index({ qrCode: 1 });
+
 module.exports = mongoose.model('DoorbellCall', doorbellCallSchema);
+
+
