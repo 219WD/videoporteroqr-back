@@ -1,13 +1,7 @@
-
-const fs = require('fs');
-const path = require('path');
 const util = require('util');
 const winston = require('winston');
-const Transport = require('winston-transport');
 
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const LOG_TIME_ZONE = process.env.LOG_TIME_ZONE || 'America/Buenos_Aires';
-const LOG_DIRECTORY = path.join(__dirname, '..', 'logs');
 const LOG_LEVEL = NODE_ENV === 'development' ? 'debug' : 'info';
 
 const levels = {
@@ -18,27 +12,6 @@ const levels = {
   http: 4,
   debug: 5,
 };
-
-fs.mkdirSync(LOG_DIRECTORY, { recursive: true });
-
-function getDateStamp(date = new Date(), timeZone = LOG_TIME_ZONE) {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    timeZone,
-  }).formatToParts(date);
-
-  const values = parts.reduce((acc, part) => {
-    if (part.type !== 'literal') {
-      acc[part.type] = part.value;
-    }
-
-    return acc;
-  }, {});
-
-  return `${values.year}-${values.month}-${values.day}`;
-}
 
 function normalizeValue(value) {
   if (value instanceof Error) {
@@ -77,70 +50,6 @@ function buildMeta(info) {
   return Object.keys(meta).length > 0 ? meta : null;
 }
 
-function formatLine(info) {
-  const timestamp = info.timestamp || new Date().toISOString();
-  const scope = info.scope ? ` [${info.scope}]` : '';
-  const message =
-    typeof info.message === 'string'
-      ? info.message
-      : util.inspect(info.message, { breakLength: Infinity, depth: 6 });
-  const meta = buildMeta(info);
-  const stack = info.stack ? `\n${info.stack}` : '';
-  const metaText = meta ? ` ${JSON.stringify(meta)}` : '';
-
-  return `${timestamp} ${String(info.level).toUpperCase()}${scope} ${message}${metaText}${stack}`;
-}
-
-class DailyFileTransport extends Transport {
-  constructor(options = {}) {
-    super(options);
-    this.directory = options.directory || LOG_DIRECTORY;
-    this.filenamePrefix = options.filenamePrefix || 'app';
-    this.timeZone = options.timeZone || LOG_TIME_ZONE;
-    this.currentDate = null;
-    this.stream = null;
-    fs.mkdirSync(this.directory, { recursive: true });
-  }
-
-  getFilePath(dateStamp) {
-    return path.join(this.directory, `${this.filenamePrefix}-${dateStamp}.log`);
-  }
-
-  ensureStream() {
-    const dateStamp = getDateStamp(new Date(), this.timeZone);
-
-    if (this.currentDate === dateStamp && this.stream) {
-      return;
-    }
-
-    if (this.stream) {
-      this.stream.end();
-    }
-
-    this.currentDate = dateStamp;
-    this.stream = fs.createWriteStream(this.getFilePath(dateStamp), {
-      flags: 'a',
-    });
-
-    this.stream.on('error', (error) => {
-      this.emit('error', error);
-    });
-  }
-
-  log(info, callback) {
-    setImmediate(() => this.emit('logged', info));
-
-    try {
-      this.ensureStream();
-      const line = formatLine(info);
-      this.stream.write(`${line}\n`, callback);
-    } catch (error) {
-      this.emit('error', error);
-      callback?.();
-    }
-  }
-}
-
 const baseLogger = winston.createLogger({
   defaultMeta: {
     service: 'videoporteroqr-back',
@@ -161,14 +70,9 @@ const baseLogger = winston.createLogger({
           const metaText = normalizedMeta ? ` ${JSON.stringify(normalizedMeta)}` : '';
           const stackText = stack ? `\n${stack}` : '';
 
-          return `${timestamp} ${level}${scopeText} ${message}${metaText}${stackText}`;
+          return `${timestamp} ${level.toUpperCase()}${scopeText} ${message}${metaText}${stackText}`;
         }),
       ),
-    }),
-    new DailyFileTransport({
-      directory: LOG_DIRECTORY,
-      filenamePrefix: 'app',
-      level: 'debug',
     }),
   ],
   exitOnError: false,
