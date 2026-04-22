@@ -1,0 +1,10 @@
+PORT=3000
+NODE_ENV=production
+MONGO_URI=mongodb+srv://user:pass@cluster.mongodb.net/videoporteroqr
+JWT_SECRET=change-me
+APP_PUBLIC_URL=https://videoporteroqr-back.up.railway.app
+ANON_WEB_APP_URL=https://videoporteroqr-web-anon.up.railway.app
+ALLOWED_ORIGINS=https://videoporteroqr-back.up.railway.app,https://videoporteroqr-web-anon.up.railway.app
+ADMIN_NAME=
+ADMIN_EMAIL=
+ADMIN_PASSWORD=

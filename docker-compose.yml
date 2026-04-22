@@ -1,0 +1,14 @@
+name: api-albiero
+
+services:
+  mongo-albiero:
+    image: mongo:latest
+    container_name: mongo-albiero
+    restart: unless-stopped
+    ports:
+      - "10400:27017"
+    volumes:
+      - mongo-albiero-data:/data/db
+
+volumes:
+  mongo-albiero-data:

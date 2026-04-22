@@ -1,29 +1,104 @@
+const jwt = require('jsonwebtoken');
 const socketIo = require('socket.io');
+const User = require('./models/User');
+const { ALLOWED_ORIGINS, JWT_SECRET } = require('./config/env');
+const { verifyGuestToken } = require('./utils/accessTokens');
+const { createSocketState } = require('./websocket/socketState');
+const { createSocketHelpers } = require('./websocket/socketUtils');
 
 let io;
+let socketState = null;
+let socketHelpers = null;
 let hostRoomsInstance = null;
 let roomsInstance = null;
 let userSocketMapInstance = null;
 let callRoomsInstance = null;
+let getServerStatsInstance = null;
+
+function getCallRoomName(callId) {
+  return `call-${callId}`;
+}
+
+function normalizeSocketToken(token) {
+  return typeof token === 'string' && token.trim() ? token.trim() : null;
+}
+
+async function resolveSocketAuth(token) {
+  const normalized = normalizeSocketToken(token);
+  if (!normalized) {
+    return null;
+  }
+
+  const guestPayload = verifyGuestToken(normalized);
+  if (guestPayload) {
+    return {
+      kind: 'guest',
+      guest: guestPayload,
+    };
+  }
+
+  try {
+    const payload = jwt.verify(normalized, JWT_SECRET);
+    const user = await User.findById(payload.id).select('_id role name');
+
+    if (!user) {
+      return null;
+    }
+
+    return {
+      kind: 'user',
+      user: {
+        id: user._id.toString(),
+        role: user.role,
+        name: user.name,
+      },
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function verifySocketGuestAccess(data, callId) {
+  const token = data?.token || data?.guestToken || data?.accessToken || null;
+  const payload = verifyGuestToken(token);
+
+  if (!payload || !callId) {
+    return null;
+  }
+
+  if (payload.callId?.toString?.() !== callId.toString()) {
+    return null;
+  }
+
+  return payload;
+}
 
 function initializeWebSocket(server) {
   io = socketIo(server, {
     cors: {
-      origin: "*",
-      methods: ["GET", "POST"]
+      methods: ['GET', 'POST'],
+      origin: ALLOWED_ORIGINS,
     }
   });
 
-  const rooms = new Map();
-  const userSocketMap = new Map();
-  const hostRooms = new Map();
-  const callRooms = new Map();
-  const flowRooms = new Map();
+  socketState = createSocketState();
+  socketHelpers = createSocketHelpers(io, socketState);
+
+  const { callRooms, flowRooms, hostRooms, rooms, userSocketMap } = socketState;
 
   roomsInstance = rooms;
   userSocketMapInstance = userSocketMap;
   hostRoomsInstance = hostRooms;
   callRoomsInstance = callRooms;
+
+  io.use(async (socket, next) => {
+    try {
+      socket.data.auth = await resolveSocketAuth(socket.handshake.auth?.token);
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
 
   io.on('connection', (socket) => {
     console.log('🔌 Usuario conectado:', socket.id);
@@ -288,9 +363,93 @@ function initializeWebSocket(server) {
 
       socket.join(`user-${userId}`);
       userSocketMap.set(userId.toString(), socket.id);
+      console.log(`ðŸ“¡ Socket ${socket.id} unido a user-${userId}`);
     });
 
     // ✅ SALA SIMPLE: Para la página web
+    socket.on('call:join-room', (data) => {
+      const { callId, userId, role } = data || {};
+
+      if (!callId) {
+        console.warn('⚠️ Intento de unirse a una llamada sin callId');
+        return;
+      }
+
+      const roomName = getCallRoomName(callId);
+      socket.join(roomName);
+
+      if (userId) {
+        userSocketMap.set(userId.toString(), socket.id);
+      }
+
+      if (callRoomsInstance?.set) {
+        const current = callRoomsInstance.get(callId) || {};
+        callRoomsInstance.set(callId, {
+          ...current,
+          callId,
+          roomId: roomName,
+          [`${role || 'participant'}SocketId`]: socket.id,
+          [`${role || 'participant'}JoinedAt`]: new Date(),
+        });
+      }
+
+      console.log(`🎧 Usuario ${userId || socket.id} unido a llamada ${callId} como ${role || 'participant'}`);
+
+      socket.emit('call:room-joined', {
+        callId,
+        roomId: roomName,
+        role: role || 'participant',
+      });
+    });
+
+    socket.on('call:offer', (data) => {
+      const { callId, toUserId, offer, fromUserId } = data || {};
+
+      if (!callId || !toUserId || !offer) {
+        console.warn('⚠️ call:offer incompleto', { callId, toUserId, hasOffer: !!offer });
+        return;
+      }
+
+      console.log(`📨 call:offer ${callId} -> user-${toUserId}`);
+      emitToUser(toUserId, 'call:offer', {
+        callId,
+        offer,
+        fromUserId: fromUserId || null,
+      });
+    });
+
+    socket.on('call:answer', (data) => {
+      const { callId, toUserId, answer, fromUserId } = data || {};
+
+      if (!callId || !toUserId || !answer) {
+        console.warn('⚠️ call:answer incompleto', { callId, toUserId, hasAnswer: !!answer });
+        return;
+      }
+
+      console.log(`📨 call:answer ${callId} -> user-${toUserId}`);
+      emitToUser(toUserId, 'call:answer', {
+        callId,
+        answer,
+        fromUserId: fromUserId || null,
+      });
+    });
+
+    socket.on('call:ice-candidate', (data) => {
+      const { callId, toUserId, candidate, fromUserId } = data || {};
+
+      if (!callId || !toUserId || !candidate) {
+        console.warn('⚠️ call:ice-candidate incompleto', { callId, toUserId, hasCandidate: !!candidate });
+        return;
+      }
+
+      console.log(`🧊 call:ice-candidate ${callId} -> user-${toUserId}`);
+      emitToUser(toUserId, 'call:ice-candidate', {
+        callId,
+        candidate,
+        fromUserId: fromUserId || null,
+      });
+    });
+
     socket.on('join-room', (data) => {
       const { roomId, role } = data;
       console.log(`🎯 ${role} uniéndose a sala: ${roomId}`);
@@ -369,8 +528,32 @@ function initializeWebSocket(server) {
       const { callId, userId, userRole } = data;
       console.log(`🎥 Usuario ${userId || 'anonimo'} (${userRole}) uniéndose a sala ${callId}`);
 
+      const auth = socket.data.auth || null;
+
+      if (userRole === 'guest') {
+        const guestCallId = auth?.kind === 'guest' ? auth.guest?.callId?.toString?.() : null;
+        const fallbackGuestAccess = verifySocketGuestAccess(data, callId);
+        if (guestCallId !== callId?.toString?.() && !fallbackGuestAccess) {
+          console.warn('⚠️ Guest sin token válido intentando unirse a call-room', { callId });
+          return;
+        }
+      } else {
+        if (auth?.kind !== 'user') {
+          console.warn('⚠️ Usuario sin token autentificado intentando unirse a call-room', { callId, userRole });
+          return;
+        }
+
+        const authUserId = auth.user?.id?.toString?.() || null;
+        if (userId && authUserId && userId.toString() !== authUserId) {
+          console.warn('⚠️ Usuario autenticado con userId inconsistente', { callId, userId, authUserId });
+          return;
+        }
+      }
+
       if (userId) {
         userSocketMap.set(userId.toString(), socket.id);
+      } else if (auth?.kind === 'user' && auth.user?.id) {
+        userSocketMap.set(auth.user.id.toString(), socket.id);
       } else {
         console.log(`⚠️ Usuario anónimo uniéndose a sala ${callId}`);
       }
@@ -549,6 +732,17 @@ function initializeWebSocket(server) {
 
       console.log(`📞 Llamada finalizada en sala ${targetRoom}`);
 
+      const auth = socket.data.auth || null;
+      const isGuestAuthorized =
+        (auth?.kind === 'guest' && auth.guest?.callId?.toString?.() === targetRoom?.toString?.()) ||
+        !!verifySocketGuestAccess(data, targetRoom);
+      const isUserAuthorized = auth?.kind === 'user' && !!data?.userId && data.userId.toString() === auth.user.id.toString();
+
+      if (!isGuestAuthorized && !isUserAuthorized) {
+        console.warn('⚠️ end-call sin acceso valido', { targetRoom });
+        return;
+      }
+
       io.to(targetRoom).emit('call-ended');
 
       if (rooms.has(targetRoom)) {
@@ -636,6 +830,14 @@ function initializeWebSocket(server) {
 
       if (!callId) {
         console.warn('⚠️ Intento de unirse a flow sin callId');
+        return;
+      }
+
+      const auth = socket.data.auth || null;
+      const guestCallId = auth?.kind === 'guest' ? auth.guest?.callId?.toString?.() : null;
+      const fallbackGuestAccess = verifySocketGuestAccess(data, callId);
+      if (guestCallId !== callId?.toString?.() && !fallbackGuestAccess) {
+        console.warn('⚠️ Guest sin token válido intentando unirse a flow-room', { callId });
         return;
       }
 
@@ -727,39 +929,22 @@ function initializeWebSocket(server) {
 
   // Notificar a un host específico
   function notifyHost(hostId, event, data) {
-    const hostSocketId = hostRooms.get(hostId.toString());
-    if (hostSocketId) {
-      io.to(hostSocketId).emit(event, data);
-      return true;
-    }
-    return false;
+    return socketHelpers.notifyHost(hostId, event, data);
   }
 
   // Notificar a un usuario específico
   function notifyUser(userId, event, data) {
-    const userSocketId = userSocketMap.get(userId.toString());
-    if (userSocketId) {
-      io.to(userSocketId).emit(event, data);
-      return true;
-    }
-    return false;
+    return socketHelpers.notifyUser(userId, event, data);
   }
 
   // Verificar si un host está en línea
   function isHostOnline(hostId) {
-    return hostRooms.has(hostId.toString());
+    return socketHelpers.isHostOnline(hostId);
   }
 
   // Obtener estadísticas del servidor
   function getServerStats() {
-    return {
-      totalConnections: io.engine.clientsCount,
-      hostRooms: hostRooms.size,
-      callRooms: rooms.size,
-      userConnections: userSocketMap.size,
-      trackedCalls: callRooms.size,
-      flowRooms: flowRooms.size
-    };
+    return socketHelpers.getServerStats();
   }
 
   // ✅ FUNCIONES EXPORTABLES
@@ -790,13 +975,9 @@ function initializeWebSocket(server) {
   io.getServerStats = getServerStats;
   io.getFlowRooms = getFlowRooms;
 
-  console.log('🚀 Servidor WebSocket inicializado correctamente');
+  getServerStatsInstance = getServerStats;
 
-  // ✅ LOG PERIÓDICO DE ESTADÍSTICAS
-  setInterval(() => {
-    const stats = getServerStats();
-    console.log('📊 Estadísticas del servidor:', stats);
-  }, 60000);
+  console.log('🚀 Servidor WebSocket inicializado correctamente');
 
   return io;
 }
@@ -824,11 +1005,52 @@ function getUserSocketMap() {
   return userSocketMapInstance;
 }
 
+function getServerStats() {
+  if (typeof getServerStatsInstance !== 'function') {
+    return {
+      callRooms: 0,
+      flowRooms: 0,
+      hostRooms: 0,
+      trackedCalls: 0,
+      totalConnections: 0,
+      userConnections: 0,
+    };
+  }
+
+  return getServerStatsInstance();
+}
+
+function emitToUser(userId, event, data) {
+  if (!io) return false;
+  console.log(`[socket:emit] -> user-${userId.toString()} event=${event}`);
+  io.to(`user-${userId.toString()}`).emit(event, data);
+  return true;
+}
+
+function emitConversationUpdate(userId, data) {
+  return emitToUser(userId, 'conversation-updated', data);
+}
+
+function emitConversationMessage(userId, data) {
+  return emitToUser(userId, 'conversation-message', data);
+}
+
+function emitConversationRead(userId, data) {
+  return emitToUser(userId, 'conversation-read', data);
+}
+
 module.exports = {
   initializeWebSocket,
   getIO,
   getHostRooms,
   getCallRooms,
   getRooms,
-  getUserSocketMap
+  getServerStats,
+  getUserSocketMap,
+  emitToUser,
+  emitConversationUpdate,
+  emitConversationMessage,
+  emitConversationRead,
 };
+
+
