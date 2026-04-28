@@ -19,6 +19,8 @@ const APP_PUBLIC_URL =
   process.env.APP_PUBLIC_URL || `http://localhost:${PORT}`;
 const ANON_WEB_APP_URL =
   process.env.ANON_WEB_APP_URL || 'http://localhost:5173';
+const EXPO_PUSH_API =
+  process.env.EXPO_PUSH_API || 'https://exp.host/--/api/v2/push/send';
 const defaultAllowedOrigins = [APP_PUBLIC_URL, ANON_WEB_APP_URL];
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
@@ -36,6 +38,7 @@ module.exports = {
   JWT_SECRET,
   APP_PUBLIC_URL,
   ANON_WEB_APP_URL,
+  EXPO_PUSH_API,
   ALLOWED_ORIGINS,
   ADMIN_NAME,
   ADMIN_EMAIL,

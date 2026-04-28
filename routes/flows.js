@@ -6,9 +6,7 @@ const flowsController = require('../controllers/flowsController');
 const router = express.Router();
 
 router.post('/start', flowsController.startFlow);
-router.post('/:callId/start-call', flowsController.startAnonymousVideo);
 router.post('/continue-message', authMiddleware, roleGuard('host', 'admin'), flowsController.continueMessage);
-router.post('/continue-call', authMiddleware, roleGuard('host', 'admin'), flowsController.continueCall);
 router.get('/:callId/messages', flowsController.getFlowMessages);
 router.post('/:callId/send-message', flowsController.sendFlowMessage);
 router.post('/respond', authMiddleware, roleGuard('host', 'admin'), flowsController.respondFlow);

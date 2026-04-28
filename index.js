@@ -15,8 +15,6 @@ const authRoutes = require('./routes/auth')
 const dashRoutes = require('./routes/dashboard')
 const notificationRoutes = require('./routes/notifications')
 const messageRoutes = require('./routes/messages')
-const callRoutes = require('./routes/calls')
-const videoCallRoutes = require('./routes/videocall')
 const flowRoutes = require('./routes/flows')
 const serverRoutes = require('./routes/server')
 
@@ -58,14 +56,12 @@ function createApp() {
   });
 
   app.use(['/auth/login', '/auth/register'], authLimiter);
-  app.use(['/videocall/anonymous-call', '/flows/start', '/notifications/call-host', '/notifications/push-tokens'], publicLimiter);
+  app.use(['/flows/start', '/notifications/push-tokens'], publicLimiter);
 
   app.use('/auth', authRoutes);
   app.use('/dashboard', dashRoutes);
   app.use('/notifications', notificationRoutes);
   app.use('/messages', messageRoutes);
-  app.use('/calls', callRoutes);
-  app.use('/videocall', videoCallRoutes);
   app.use('/flows', flowRoutes);
   app.use('/server', serverRoutes);
 
