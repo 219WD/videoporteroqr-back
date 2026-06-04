@@ -23,6 +23,19 @@ const anonymousMessageSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    deliveryStatus: {
+      type: String,
+      enum: ['sent', 'delivered', 'read'],
+      default: 'sent',
+    },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+    readAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

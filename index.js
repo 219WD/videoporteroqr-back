@@ -5,17 +5,16 @@ const cors = require('cors')
 const morgan = require('morgan')
 const { randomUUID } = require('crypto')
 
-const { ALLOWED_ORIGINS, ANON_WEB_APP_URL, APP_PUBLIC_URL, MONGO_URI, NODE_ENV, PORT } = require('./config/env')
-const { initializeWebSocket } = require('./websocket-server')
+const { ALLOWED_ORIGINS, APP_PUBLIC_URL, MONGO_URI, NODE_ENV, PORT } = require('./config/env')
 const { buildCorsOptions, createRateLimiter, securityHeaders } = require('./middleware/security')
 const { createScopedLogger, logger: baseLogger } = require('./utils/logger')
 const { seedAdminUser } = require('./scripts/seedAdmin')
+const { initializeWebSocket } = require('./websocket')
 
 const authRoutes = require('./routes/auth')
 const dashRoutes = require('./routes/dashboard')
+const backofficeRoutes = require('./routes/backoffice')
 const notificationRoutes = require('./routes/notifications')
-const messageRoutes = require('./routes/messages')
-const flowRoutes = require('./routes/flows')
 const serverRoutes = require('./routes/server')
 
 const logger = createScopedLogger('app')
@@ -55,14 +54,24 @@ function createApp() {
     windowMs: 15 * 60 * 1000,
   });
 
-  app.use(['/auth/login', '/auth/register'], authLimiter);
-  app.use(['/flows/start', '/notifications/push-tokens'], publicLimiter);
+  app.use(
+    [
+      '/auth/login',
+      '/auth/register',
+      '/auth/verify-email',
+      '/auth/resend-email-otp',
+      '/auth/forgot-password',
+      '/auth/reset-password',
+    ],
+    authLimiter,
+  );
+  app.use(['/notifications/push-tokens'], publicLimiter);
+  app.use(['/backoffice/users'], publicLimiter);
 
   app.use('/auth', authRoutes);
   app.use('/dashboard', dashRoutes);
+  app.use('/backoffice', backofficeRoutes);
   app.use('/notifications', notificationRoutes);
-  app.use('/messages', messageRoutes);
-  app.use('/flows', flowRoutes);
   app.use('/server', serverRoutes);
 
   app.get('/health', (req, res) => {
@@ -79,7 +88,7 @@ function createApp() {
 
   app.get('/scan', (req, res) => {
     const { code } = req.query;
-    const anonWebBase = ANON_WEB_APP_URL.replace(/\/$/, '');
+    const anonWebBase = String(process.env.ANON_WEB_APP_URL || 'http://localhost:5173').replace(/\/$/, '');
 
     if (!code) {
       return res.redirect(`${anonWebBase}/`);
@@ -111,10 +120,9 @@ async function start() {
   const app = createApp();
   const server = http.createServer(app);
 
-  initializeWebSocket(server);
-
   await mongoose.connect(MONGO_URI);
   await seedAdminUser();
+  initializeWebSocket(server);
   logger.info('MongoDB conectado');
 
   server.once('error', (error) => {
@@ -141,5 +149,3 @@ start().catch((error) => {
   logger.critical('No fue posible iniciar el servidor', { error });
   process.exit(1);
 });
-
-

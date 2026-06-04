@@ -1,4 +1,3 @@
-
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const { JWT_SECRET } = require('../config/env');
@@ -16,7 +15,7 @@ async function authMiddleware(req, res, next) {
   const token = extractBearerToken(req.headers.authorization);
 
   if (!token) {
-    return res.status(401).json({ error: 'Token requerido' });
+    return res.status(401).json({ error: 'Necesitas iniciar sesion de nuevo.' });
   }
 
   try {
@@ -24,20 +23,27 @@ async function authMiddleware(req, res, next) {
     const user = await User.findById(data.id);
 
     if (!user) {
-      return res.status(401).json({ error: 'Usuario no válido para este token' });
+      return res.status(401).json({ error: 'No pudimos validar tu acceso. Inicia sesion de nuevo.' });
+    }
+
+    const tokenVersion = Number.isFinite(Number(data.ver)) ? Number(data.ver) : 0;
+    const currentVersion = Number.isFinite(Number(user.tokenVersion)) ? Number(user.tokenVersion) : 0;
+
+    if (tokenVersion !== currentVersion) {
+      return res.status(401).json({ error: 'Tu sesion caduco. Inicia sesion de nuevo.' });
     }
 
     req.user = user;
     return next();
   } catch (error) {
-    return res.status(401).json({ error: 'Token inválido' });
+    return res.status(401).json({ error: 'No pudimos validar tu acceso. Inicia sesion de nuevo.' });
   }
 }
 
 function roleGuard(...allowed) {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ error: 'Autenticación requerida' });
+      return res.status(401).json({ error: 'Autenticacion requerida' });
     }
 
     if (!allowed.includes(req.user.role)) {
@@ -52,4 +58,3 @@ module.exports = {
   authMiddleware,
   roleGuard,
 };
-

@@ -58,6 +58,10 @@ const anonymousConversationSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    expireAt: {
+      type: Date,
+      default: null,
+    },
     timeoutAt: {
       type: Date,
       default: null,

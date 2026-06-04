@@ -2,7 +2,6 @@
 const { randomUUID } = require('crypto');
 const { Expo } = require('expo-server-sdk');
 const PushToken = require('../models/PushToken');
-const { getIO } = require('../websocket-server');
 const { errorJson, logJson, warnJson } = require('../utils/logging');
 
 const expo = new Expo();
@@ -175,12 +174,16 @@ function buildExpoMessage({
   title,
   body,
   data = {},
+  sound = 'doorbell.wav',
+  channelId = 'doorbell',
 }) {
   return {
     to: token,
     title,
     body,
     data,
+    sound,
+    channelId,
   };
 }
 
@@ -376,6 +379,8 @@ async function sendPushNotificationToUser({
       title,
       body,
       data,
+      sound: 'doorbell.wav',
+      channelId: 'doorbell',
     }),
   );
 
@@ -443,6 +448,8 @@ async function sendPushNotificationToAll({
       title,
       body,
       data,
+      sound: 'doorbell.wav',
+      channelId: 'doorbell',
     }),
   );
 
@@ -482,7 +489,6 @@ async function dispatchNotification({
   body,
   data = {},
   sendPush = true,
-  sendSocket = true,
 }) {
   const notificationId = payload.notificationId || randomUUID();
   logJson('[push:dispatch:start]', {
@@ -490,7 +496,6 @@ async function dispatchNotification({
     userId: toObjectIdString(userId),
     socketEvent,
     sendPush,
-    sendSocket,
     title: title || payload.title || 'Nueva notificación',
   });
 
@@ -514,25 +519,7 @@ async function dispatchNotification({
     notificationId,
   };
 
-  const socketDelivered = Boolean(sendSocket);
-
-  if (sendSocket) {
-    try {
-      const io = getIO();
-      logJson('[push:dispatch:socket:emit]', {
-        notificationId,
-        userId: toObjectIdString(userId),
-        socketEvent,
-      });
-      if (userId) {
-        io.to(`user-${toObjectIdString(userId)}`).emit(socketEvent, notificationPayload);
-      } else {
-        io.emit(socketEvent, notificationPayload);
-      }
-    } catch (error) {
-      errorJson('[push:socket:error]', error);
-    }
-  }
+  const socketDelivered = false;
 
   let pushResult = {
     delivered: false,

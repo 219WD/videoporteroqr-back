@@ -11,6 +11,26 @@ async function getAdminHosts(req, res) {
   }
 }
 
+async function getAdminUsers(req, res) {
+  try {
+    const users = await User.find({}).select('name email qrCode role createdAt').sort({ createdAt: -1 });
+
+    res.json(
+      users.map((user) => ({
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        qrCode: user.qrCode || null,
+        role: user.role || 'host',
+        createdAt: user.createdAt,
+      })),
+    );
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error fetching users' });
+  }
+}
+
 async function getAdminGuests(req, res) {
   try {
     const guests = await User.find({ role: 'host' }).select('name email createdAt');
@@ -78,6 +98,7 @@ async function getAdminStats(req, res) {
 
 module.exports = {
   getAdminHosts,
+  getAdminUsers,
   getAdminGuests,
   getAdminStats,
 };

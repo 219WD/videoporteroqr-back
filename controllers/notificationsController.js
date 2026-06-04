@@ -17,14 +17,20 @@ async function resolveOptionalUser(req) {
 
   const [scheme, token] = header.split(' ');
   if (scheme !== 'Bearer' || !token) {
-    throw new Error('Token inválido');
+    throw new Error('No pudimos validar tu acceso');
   }
 
   const payload = jwt.verify(token, JWT_SECRET);
-  const user = await User.findById(payload.id);
+  const user = await User.findById(payload.id).select('_id role tokenVersion');
 
   if (!user) {
-    throw new Error('Usuario inválido');
+    throw new Error('No pudimos validar tu acceso');
+  }
+
+  const tokenVersion = Number.isFinite(Number(payload.ver)) ? Number(payload.ver) : 0;
+  const currentVersion = Number.isFinite(Number(user.tokenVersion)) ? Number(user.tokenVersion) : 0;
+  if (tokenVersion !== currentVersion) {
+    throw new Error('No pudimos validar tu acceso');
   }
 
   return user;
@@ -58,7 +64,7 @@ async function registerPushToken(req, res) {
     const expoPushToken = req.body.expoPushToken || req.body.token;
 
     if (!expoPushToken || typeof expoPushToken !== 'string') {
-      return sendError(res, 400, 'Expo push token requerido');
+      return sendError(res, 400, 'Se requiere el token del dispositivo');
     }
 
     const pushToken = await upsertPushToken({
@@ -79,21 +85,20 @@ async function registerPushToken(req, res) {
     });
 
     return sendSuccess(res, {
-      message: user ? 'Token vinculado al usuario' : 'Token registrado de forma anónima',
+      message: user ? 'Dispositivo vinculado a tu cuenta' : 'Dispositivo registrado sin cuenta',
       pushToken: serializePushToken(pushToken),
     });
   } catch (error) {
     if (
       error.name === 'TokenExpiredError' ||
       error.name === 'JsonWebTokenError' ||
-      error.message === 'Token inválido' ||
-      error.message === 'Usuario inválido'
+      error.message === 'No pudimos validar tu acceso'
     ) {
-      return sendError(res, 401, 'Token inválido');
+      return sendError(res, 401, 'No pudimos validar tu acceso');
     }
 
     errorJson('[notifications:push-tokens:register:error]', error);
-    return sendError(res, 500, 'Error registrando push token');
+    return sendError(res, 500, 'No pudimos registrar el dispositivo');
   }
 }
 
@@ -109,7 +114,7 @@ async function listPushTokens(req, res) {
     });
   } catch (error) {
     console.error('Error obteniendo push tokens:', error);
-    return sendError(res, 500, 'Error obteniendo push tokens');
+    return sendError(res, 500, 'No pudimos obtener los dispositivos registrados');
   }
 }
 

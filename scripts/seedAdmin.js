@@ -24,6 +24,8 @@ async function seedAdminUser() {
     existing.name = name;
     existing.password = hashedPassword;
     existing.role = 'admin';
+    existing.emailVerified = true;
+    existing.emailVerifiedAt = existing.emailVerifiedAt || new Date();
     await existing.save();
 
     logger.info('Admin actualizado desde variables de entorno', { email });
@@ -35,6 +37,8 @@ async function seedAdminUser() {
     name,
     password: hashedPassword,
     role: 'admin',
+    emailVerified: true,
+    emailVerifiedAt: new Date(),
   });
 
   logger.info('Admin inyectado en MongoDB', { email });
