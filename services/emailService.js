@@ -5,6 +5,9 @@ const {
   NODEMAILER_PASSWORD,
   NODEMAILER_BYPASS_ENABLED,
 } = require('../config/env');
+const { createScopedLogger } = require('../utils/logger');
+
+const mailLogger = createScopedLogger('email');
 
 function ensureMailConfig() {
   if (!NODEMAILER_USER || !NODEMAILER_PASSWORD) {
@@ -250,26 +253,54 @@ function buildOtpEmailText({ title, intro, code, footer, expiryLabel }) {
 }
 
 async function sendEmail({ to, subject, html, text }) {
+  mailLogger.info('Preparando envio de email', {
+    to,
+    subject,
+    bypassed: NODEMAILER_BYPASS_ENABLED,
+  });
+
   if (NODEMAILER_BYPASS_ENABLED) {
+    mailLogger.info('Envio de email omitido por bypass', {
+      to,
+      subject,
+    });
     return { bypassed: true, to, subject };
   }
 
   ensureMailConfig();
 
-  const info = await transporter.sendMail({
-    from: `"QR Door" <${NODEMAILER_USER}>`,
-    to,
-    subject,
-    html,
-    text,
-  });
+  try {
+    const info = await transporter.sendMail({
+      from: `"QR Door" <${NODEMAILER_USER}>`,
+      to,
+      subject,
+      html,
+      text,
+    });
 
-  return {
-    messageId: info.messageId,
-    accepted: info.accepted,
-    rejected: info.rejected,
-    response: info.response,
-  };
+    mailLogger.info('Email enviado correctamente', {
+      to,
+      subject,
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    });
+
+    return {
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+    };
+  } catch (error) {
+    mailLogger.error('Error enviando email', {
+      to,
+      subject,
+      error,
+    });
+    throw error;
+  }
 }
 
 async function sendVerificationCodeEmail({ to, name, code }) {
