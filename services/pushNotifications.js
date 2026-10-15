@@ -513,6 +513,12 @@ async function dispatchNotification({
     data: {
       ...data,
       ...(payload.data || {}),
+      ...(payload.screen ? { screen: payload.screen } : {}),
+      ...(payload.params ? { params: payload.params } : {}),
+      ...(payload.conversationId ? { conversationId: payload.conversationId } : {}),
+      ...(payload.callId ? { callId: payload.callId } : {}),
+      ...(payload.guestName ? { guestName: payload.guestName } : {}),
+      ...(payload.type ? { type: payload.type } : {}),
       notificationId,
     },
     ...payload,
