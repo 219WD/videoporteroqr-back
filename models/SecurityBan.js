@@ -1,8 +1,12 @@
 const mongoose = require('mongoose');
 
 /**
- * Registro de baneo temporal para prevenir spam de OTP (recuperación de contraseña).
+ * Registro de baneo temporal para prevenir spam de recuperación de contraseña por OTP.
  * MongoDB borra automáticamente el documento cuando se alcanza `expiresAt` (TTL index, 24h).
+ *
+ * - type 'email': guarda en `relatedIps` las IPs que han solicitado código para ese correo.
+ *   Al superar el umbral, se banea el correo y todas esas IPs relacionadas.
+ * - type 'ip': guarda en `relatedEmails` los correos solicitados desde esa IP.
  */
 const SecurityBanSchema = new mongoose.Schema({
   identifier: {
@@ -17,17 +21,22 @@ const SecurityBanSchema = new mongoose.Schema({
   },
   action: {
     type: String,
-    enum: ['request_otp', 'verify_otp'],
+    enum: ['forgot_password'],
     required: true,
-  }, // 'request_otp' = pedir código, 'verify_otp' = usar código
+    default: 'forgot_password',
+  },
   attempts: {
     type: Number,
     default: 1,
   },
-  reason: {
-    type: String,
-    default: 'otp_spam',
-  },
+  relatedIps: {
+    type: [String],
+    default: [],
+  }, // IPs asociadas a este email (solo type 'email')
+  relatedEmails: {
+    type: [String],
+    default: [],
+  }, // emails asociados a esta IP (solo type 'ip')
   createdAt: {
     type: Date,
     default: Date.now,
@@ -41,9 +50,16 @@ const SecurityBanSchema = new mongoose.Schema({
     required: true,
     index: { expires: 0 },
   },
+  /**
+   * Fecha en que se activó el baneo. Mientras sea null, no hay ban activo.
+   */
   bannedAt: {
     type: Date,
     default: null,
+  },
+  reason: {
+    type: String,
+    default: 'forgot_password_spam',
   },
 });
 

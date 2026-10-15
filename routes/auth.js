@@ -2,8 +2,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { authMiddleware } = require('../middleware/auth');
-const { forgotPasswordBanMiddleware } = require('../middleware/securityBan');
-const { auditMiddleware } = require('../middleware/auditLogger');
+const { otpSecurityMiddleware } = require('../middleware/securityBan');
 
 const router = express.Router();
 
@@ -15,18 +14,18 @@ router.get('/me', authMiddleware, authController.getMe);
 router.post('/verify-email', authController.verifyEmail);
 router.post('/resend-email-otp', authController.resendEmailOtp);
 
-// Máximo 5 solicitudes de código por mail en 24h (por IP y por email).
-// Baneo temporal con TTL de 24h en MongoDB. No hay baneo por usar el código.
+// Solicitud de código de recuperación: máximo 5 en 24h por IP y por email.
+// Al superar el umbral se banea el email y todas sus IPs relacionadas (TTL 24h).
 router.post(
   '/forgot-password',
-  forgotPasswordBanMiddleware,
+  otpSecurityMiddleware('forgot_password'),
   authController.forgotPassword
 );
 
-// Auditar cada intento de uso del código de recuperación
+// Validar código de recuperación: solo verifica si la IP o el email ya están baneados.
 router.post(
   '/reset-password',
-  auditMiddleware('reset_password_attempt', 'allowed'),
+  otpSecurityMiddleware('reset_password'),
   authController.resetPassword
 );
 
