@@ -1,5 +1,5 @@
 const SecurityBan = require('../models/SecurityBan');
-const { createScopedLogger } = require('./utils/logger');
+const { createScopedLogger } = require('../utils/logger');
 const { logSecurityEvent } = require('./auditLogger');
 
 const banLogger = createScopedLogger('security:ban');
