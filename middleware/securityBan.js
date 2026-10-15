@@ -1,5 +1,8 @@
 const SecurityBan = require('../models/SecurityBan');
+const { createScopedLogger } = require('./utils/logger');
 const { logSecurityEvent } = require('./auditLogger');
+
+const banLogger = createScopedLogger('security:ban');
 
 /**
  * Umbral de solicitudes de código de recuperación que activan el baneo.
@@ -98,6 +101,14 @@ function otpSecurityMiddleware(action) {
       // 1. Verificar baneo activo por IP (bloquea ambas rutas)
       const ipBanned = await isBanned(ip, 'ip');
       if (ipBanned) {
+        banLogger.warn('IP baneada: se bloquea el envío de mail de recuperación', {
+          ip,
+          email,
+          action,
+          reason: 'ip_banned',
+          blockMail: true,
+        });
+
         await logSecurityEvent({
           req,
           eventType: `${action}_request`,
@@ -115,6 +126,14 @@ function otpSecurityMiddleware(action) {
       if (email) {
         const emailBanned = await isBanned(email, 'email');
         if (emailBanned) {
+          banLogger.warn('Email baneado: se bloquea el envío de mail de recuperación', {
+            ip,
+            email,
+            action,
+            reason: 'email_banned',
+            blockMail: true,
+          });
+
           await logSecurityEvent({
             req,
             eventType: `${action}_request`,
@@ -160,6 +179,14 @@ function otpSecurityMiddleware(action) {
             for (const relatedIp of relatedIps) {
               await banIdentifier(relatedIp, 'ip');
             }
+
+            banLogger.warn('Ban activado por exceso de solicitudes de recuperación: se bloquea el envío de mail', {
+              ip,
+              email,
+              relatedIps,
+              triggerAttempts: emailDoc.attempts,
+              blockMail: true,
+            });
 
             await logSecurityEvent({
               req,
