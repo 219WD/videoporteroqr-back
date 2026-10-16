@@ -1,3 +1,8 @@
+# Nota: la instancia canónica de Mongo local vive en el docker-compose.yml
+# de la raiz del monorepo (puerto 27017). Este archivo se deja alineado por
+# si se quiere levantar solo esta carpeta; no ejecutar ambos compose a la vez
+# para evitar conflicto de puerto 27017.
+
 name: api-albiero
 
 services:
@@ -6,9 +11,10 @@ services:
     container_name: mongo-albiero
     restart: unless-stopped
     ports:
-      - "10400:27017"
+      - "27017:27017"
     volumes:
       - mongo-albiero-data:/data/db
+    command: ["--bind_ip_all"]
 
 volumes:
   mongo-albiero-data:
