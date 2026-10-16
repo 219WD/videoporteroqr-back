@@ -43,6 +43,9 @@ function formatUser(user) {
     role: user.role || 'host',
     qrCode: user.qrCode || null,
     createdAt: user.createdAt || null,
+    qrStatus: user.qrStatus || 'active',
+    plateStatus: user.plateStatus || 'active',
+    plateReplacementRequestedAt: user.plateReplacementRequestedAt || null,
   };
 }
 
@@ -54,7 +57,10 @@ async function getUsers(req, res) {
     const limit = parsePositiveInt(req.query.limit, 10, 100);
     const skip = (page - 1) * limit;
     const search = String(req.query.search || '').trim();
-    const filter = { role: 'host' };
+    const requestedRole = String(req.query.role || 'host').trim();
+    const filter = requestedRole === 'all'
+      ? {}
+      : { role: ['admin', 'plate_manager', 'technician', 'host'].includes(requestedRole) ? requestedRole : 'host' };
 
     if (search) {
       filter.name = { $regex: escapeRegex(search), $options: 'i' };
@@ -74,7 +80,7 @@ async function getUsers(req, res) {
           signal: controller.signal,
           maxTimeMS: 5000,
         })
-        .select('name email qrCode role createdAt'),
+        .select('name email qrCode role createdAt qrStatus plateStatus plateReplacementRequestedAt'),
     ]);
 
     return res.json({
@@ -144,7 +150,34 @@ async function getUserQrPng(req, res) {
   }
 }
 
+async function updateUserRole(req, res) {
+  const role = req.body?.role;
+
+  if (!['admin', 'plate_manager', 'technician', 'host'].includes(role)) {
+    return res.status(400).json({ error: 'Rol de usuario invalido' });
+  }
+
+  if (String(req.user._id) === String(req.params.userId) && role !== 'admin') {
+    return res.status(400).json({ error: 'No podes quitarte tu propio acceso de administrador' });
+  }
+
+  const user = await User.findById(req.params.userId).select('name email qrCode role createdAt qrStatus plateStatus plateReplacementRequestedAt');
+  if (!user) return res.status(404).json({ error: 'No encontramos ese usuario' });
+
+  if (user.role === 'admin' && role !== 'admin') {
+    const adminCount = await User.countDocuments({ role: 'admin' });
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: 'Debe existir al menos un administrador' });
+    }
+  }
+
+  user.role = role;
+  await user.save();
+  return res.json({ user: formatUser(user) });
+}
+
 module.exports = {
   getUsers,
   getUserQrPng,
+  updateUserRole,
 };

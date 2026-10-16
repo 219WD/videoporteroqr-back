@@ -7,6 +7,7 @@ function serializeConversation(conversation) {
     id: conversation._id?.toString?.() || conversation._id || null,
     conversationId: conversation._id?.toString?.() || conversation._id || null,
     callId: conversation._id?.toString?.() || conversation._id || null,
+    qrCode: conversation.qrCode || null,
     guestName: conversation.guestName || 'Visitante',
     status: conversation.status || 'pending',
     response: conversation.response || null,

@@ -2,6 +2,7 @@ const CHAT_EVENTS = Object.freeze({
   JOIN: 'chat:join',
   SESSION_START: 'chat:session:start',
   MESSAGE_SEND: 'chat:message:send',
+  TYPING: 'chat:typing',
   CONVERSATION_STATE: 'chat:conversation:state',
   MESSAGE_NEW: 'chat:message:new',
   MESSAGE_STATUS: 'chat:message:status',

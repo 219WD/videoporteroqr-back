@@ -31,11 +31,20 @@ const CHAT_SESSION_TIMEOUT_MS =
     ? parsedChatSessionTimeoutMs
     : 60 * 1000;
 const defaultAllowedOrigins = [APP_PUBLIC_URL, ANON_WEB_APP_URL];
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS
+const configuredAllowedOrigins = (process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
   : defaultAllowedOrigins)
   .map((origin) => origin.trim())
   .filter(Boolean);
+const localDevelopmentOrigins = NODE_ENV === 'development'
+  ? [
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:5174',
+      'http://127.0.0.1:5174',
+    ]
+  : [];
+const ALLOWED_ORIGINS = [...new Set([...configuredAllowedOrigins, ...localDevelopmentOrigins])];
 const ADMIN_NAME = process.env.ADMIN_NAME || '';
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';

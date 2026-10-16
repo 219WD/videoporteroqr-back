@@ -28,5 +28,10 @@ router.post(
   otpSecurityMiddleware('reset_password'),
   authController.resetPassword
 );
+router.post(
+  '/resend-password-otp',
+  otpSecurityMiddleware('reset_password'),
+  authController.resendPasswordResetOtp
+);
 
 module.exports = router;

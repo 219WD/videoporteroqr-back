@@ -3,8 +3,11 @@ const { randomUUID } = require('crypto');
 const { Expo } = require('expo-server-sdk');
 const PushToken = require('../models/PushToken');
 const { errorJson, logJson, warnJson } = require('../utils/logging');
+const { hasHostPresence } = require('../websocket/presence');
 
 const expo = new Expo();
+const recentNotificationIds = new Map();
+const NOTIFICATION_DEDUPE_WINDOW_MS = 30 * 1000;
 
 function toObjectIdString(value) {
   return value ? value.toString() : null;
@@ -482,6 +485,7 @@ async function sendPushNotificationToAll({
 }
 
 async function dispatchNotification({
+  io = null,
   userId,
   socketEvent = 'notification:incoming',
   payload = {},
@@ -491,12 +495,41 @@ async function dispatchNotification({
   sendPush = true,
 }) {
   const notificationId = payload.notificationId || randomUUID();
+  const previousDispatchAt = recentNotificationIds.get(notificationId);
+  if (previousDispatchAt && Date.now() - previousDispatchAt < NOTIFICATION_DEDUPE_WINDOW_MS) {
+    logJson('[push:dispatch:deduplicated]', { notificationId, userId: toObjectIdString(userId) });
+    return {
+      notificationId,
+      socketDelivered: false,
+      pushResult: { delivered: false, reason: 'duplicate', tokenCount: 0, results: [] },
+      payload: { notificationId },
+    };
+  }
+  recentNotificationIds.set(notificationId, Date.now());
+  if (recentNotificationIds.size > 1000) {
+    const oldest = recentNotificationIds.keys().next().value;
+    if (oldest) recentNotificationIds.delete(oldest);
+  }
+  const payloadData = payload && typeof payload.data === 'object' && payload.data !== null
+    ? payload.data
+    : {};
+  const notificationCallId = payload.callId || payloadData.callId || payload.params?.callId || payload.conversationId || payloadData.conversationId || null;
+  const notificationScreen = payload.screen || payloadData.screen || null;
+  const candidateParams = payload.params || payloadData.params;
+  const notificationParams = candidateParams && typeof candidateParams === 'object'
+    ? candidateParams
+    : (notificationCallId ? { callId: notificationCallId } : null);
+  const notificationType = payload.type || payloadData.type || null;
+  const conversationHostPresent = notificationCallId && userId
+    ? hasHostPresence({ conversationId: notificationCallId, hostId: userId })
+    : false;
   logJson('[push:dispatch:start]', {
     notificationId,
     userId: toObjectIdString(userId),
     socketEvent,
     sendPush,
     title: title || payload.title || 'Nueva notificación',
+    conversationHostPresent,
   });
 
   logJson('[push:dispatch:payload]', {
@@ -507,25 +540,35 @@ async function dispatchNotification({
   });
 
   const notificationPayload = {
+    ...payload,
     notificationId,
     title: title || payload.title || 'Nueva notificación',
     body: body || payload.body || '',
     data: {
       ...data,
-      ...(payload.data || {}),
-      ...(payload.screen ? { screen: payload.screen } : {}),
-      ...(payload.params ? { params: payload.params } : {}),
+      ...payloadData,
+      ...(notificationScreen ? { screen: notificationScreen } : {}),
+      ...(notificationParams ? { params: notificationParams } : {}),
       ...(payload.conversationId ? { conversationId: payload.conversationId } : {}),
-      ...(payload.callId ? { callId: payload.callId } : {}),
+      ...(notificationCallId ? { callId: notificationCallId } : {}),
       ...(payload.guestName ? { guestName: payload.guestName } : {}),
-      ...(payload.type ? { type: payload.type } : {}),
+      ...(notificationType ? { type: notificationType } : {}),
+      groupKey: notificationCallId ? `chat:${notificationCallId}` : `notification:${notificationType || 'general'}`,
       notificationId,
     },
-    ...payload,
     notificationId,
   };
 
-  const socketDelivered = false;
+  logJson('[push:dispatch:route]', {
+    notificationId,
+    socketEvent,
+    type: notificationPayload.data.type || null,
+    screen: notificationPayload.data.screen || null,
+    callId: notificationPayload.data.callId || null,
+    params: notificationPayload.data.params || null,
+  });
+
+  const socketDelivered = Boolean(io && userId && !conversationHostPresent);
 
   let pushResult = {
     delivered: false,
@@ -534,7 +577,11 @@ async function dispatchNotification({
     results: [],
   };
 
-  if (sendPush) {
+  if (socketDelivered) {
+    io.to(`host:${toObjectIdString(userId)}`).emit('notification:incoming', notificationPayload);
+  }
+
+  if (sendPush && !conversationHostPresent) {
     logJson('[push:dispatch:push:start]', {
       notificationId,
       userId: toObjectIdString(userId),
@@ -554,11 +601,12 @@ async function dispatchNotification({
       });
   }
 
-  if (!sendPush) {
+  if (!sendPush || conversationHostPresent) {
     warnJson('[push:dispatch:push-disabled]', {
       notificationId,
       userId: toObjectIdString(userId),
       socketEvent,
+      reason: conversationHostPresent ? 'host_in_conversation' : 'disabled',
     });
   }
 

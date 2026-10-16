@@ -67,6 +67,7 @@ function createApp() {
   );
   app.use(['/notifications/push-tokens'], publicLimiter);
   app.use(['/backoffice/users'], publicLimiter);
+  app.use(['/dashboard/qr/report'], publicLimiter);
 
   app.use('/auth', authRoutes);
   app.use('/dashboard', dashRoutes);

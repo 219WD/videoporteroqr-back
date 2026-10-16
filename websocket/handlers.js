@@ -12,6 +12,10 @@ const {
 const { CHAT_EVENTS } = require('./chatContract');
 const AnonymousConversation = require('../models/AnonymousConversation');
 const { createScopedLogger } = require('../utils/logger');
+const {
+  registerConversationPresence,
+  unregisterConversationPresence,
+} = require('./presence');
 
 const log = createScopedLogger('websocket:handlers');
 
@@ -76,7 +80,21 @@ function createConnectionHandlers(socket, { io, onDisconnect } = {}) {
       qrCode: qrCode || null,
     });
 
+    if (socket.data.previousConversationId && socket.data.previousConversationId !== conversationId) {
+      unregisterConversationPresence({
+        socketId: socket.id,
+        conversationId: socket.data.previousConversationId,
+      });
+      socket.leave(roomForConversation(socket.data.previousConversationId));
+    }
+    socket.data.previousConversationId = conversationId;
     socket.join(roomForConversation(conversationId));
+    registerConversationPresence({
+      socketId: socket.id,
+      conversationId,
+      userId: socket.data.hostId,
+      role,
+    });
     if (hostId && role === 'host') {
       socket.join(roomForHost(hostId));
     }
@@ -144,7 +162,7 @@ function createConnectionHandlers(socket, { io, onDisconnect } = {}) {
         }
       }
 
-      void notifyHostAboutChatStart(result).catch((error) => {
+      void notifyHostAboutChatStart({ ...result, io }).catch((error) => {
         log.warn('chat:session:start:push:error', {
           conversationId,
           error,
@@ -206,7 +224,7 @@ function createConnectionHandlers(socket, { io, onDisconnect } = {}) {
       }
 
       if (result.message.sender === 'guest') {
-        void notifyHostAboutGuestMessage(result).catch((error) => {
+        void notifyHostAboutGuestMessage({ ...result, io }).catch((error) => {
           log.warn('chat:message:push:error', {
             conversationId: result.conversation.conversationId,
             error,
@@ -234,6 +252,22 @@ function createConnectionHandlers(socket, { io, onDisconnect } = {}) {
         socket.emit(CHAT_EVENTS.ERROR, response);
       }
     }
+  });
+
+  // Typing is intentionally ephemeral: it is relayed to the conversation room
+  // and never persisted, so older clients can safely ignore this event.
+  socket.on(CHAT_EVENTS.TYPING, (payload = {}) => {
+    const conversationId = getString(payload.conversationId || payload.callId || socket.data.conversationId);
+    const role = getString(payload.role) || socket.data.role || 'guest';
+    if (!conversationId || !['guest', 'host'].includes(role)) {
+      return;
+    }
+
+    io.to(roomForConversation(conversationId)).emit(CHAT_EVENTS.TYPING, {
+      conversationId,
+      role,
+      isTyping: payload.isTyping === true,
+    });
   });
 
   socket.on(CHAT_EVENTS.MESSAGE_DELIVERED, async (payload = {}, ack) => {
@@ -359,6 +393,10 @@ function createConnectionHandlers(socket, { io, onDisconnect } = {}) {
     if (socket.data.requestAbortController && !socket.data.requestAbortController.signal.aborted) {
       socket.data.requestAbortController.abort(new Error('Socket disconnected'));
     }
+    unregisterConversationPresence({
+      socketId: socket.id,
+      conversationId: socket.data.conversationId,
+    });
     delete socket.data.requestAbortController;
     if (typeof onDisconnect === 'function') {
       onDisconnect();

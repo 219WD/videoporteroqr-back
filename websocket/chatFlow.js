@@ -124,7 +124,7 @@ async function resolveHostFromConversation(conversation, signal = null) {
   throwIfAborted(signal);
 
   const host = await User.findById(hostId)
-    .select('name email _id qrCode')
+    .select('name email _id qrCode visitorDisplayName')
     .setOptions({
       signal,
       maxTimeMS: 5000,
@@ -138,6 +138,7 @@ async function resolveHostFromConversation(conversation, signal = null) {
   return {
     id: host._id?.toString?.() || host._id || null,
     name: host.name || null,
+    visitorDisplayName: host.visitorDisplayName || null,
     email: host.email || null,
     qrCode: host.qrCode || null,
   };
@@ -366,21 +367,31 @@ async function findHostByQr(qrCode, signal = null) {
     .lean();
 }
 
-async function notifyHostAboutChatStart({ conversation, message }) {
+async function notifyHostAboutChatStart({ conversation, message, io }) {
   if (!conversation?.hostId || !message) {
     return null;
   }
 
+  const callId = conversation.conversationId || conversation.id || null;
+  if (!callId) {
+    log.warn('chat:session:start:push:missing-call-id', {
+      hostId: conversation.hostId,
+    });
+    return null;
+  }
+
   return dispatchNotification({
+    io,
     userId: conversation.hostId,
     socketEvent: 'chat:session:start',
     title: `Nuevo chat de ${conversation.guestName || 'Visitante'}`,
     body: message.text,
     payload: {
+      notificationId: `chat_started:${callId}:${message.id || message._id || 'initial'}`,
       screen: '/chat/[callId]',
-      params: { callId: conversation.conversationId || conversation.id },
-      conversationId: conversation.conversationId || conversation.id,
-      callId: conversation.conversationId || conversation.id,
+      params: { callId },
+      conversationId: callId,
+      callId,
       guestName: conversation.guestName || 'Visitante',
       sender: message.sender,
       senderName: message.senderName,
@@ -390,21 +401,32 @@ async function notifyHostAboutChatStart({ conversation, message }) {
   });
 }
 
-async function notifyHostAboutGuestMessage({ conversation, message }) {
+async function notifyHostAboutGuestMessage({ conversation, message, io }) {
   if (!conversation?.hostId || message?.sender !== 'guest') {
     return null;
   }
 
+  const callId = conversation.conversationId || conversation.id || null;
+  if (!callId) {
+    log.warn('chat:message:push:missing-call-id', {
+      hostId: conversation.hostId,
+      messageId: message.id || null,
+    });
+    return null;
+  }
+
   return dispatchNotification({
+    io,
     userId: conversation.hostId,
     socketEvent: 'chat:message:new',
     title: conversation.guestName || 'Nuevo mensaje',
     body: message.text,
     payload: {
+      notificationId: `chat_message:${callId}:${message.id || message._id || message.createdAt || 'message'}`,
       screen: '/chat/[callId]',
-      params: { callId: conversation.conversationId || conversation.id },
-      conversationId: conversation.conversationId || conversation.id,
-      callId: conversation.conversationId || conversation.id,
+      params: { callId },
+      conversationId: callId,
+      callId,
       guestName: conversation.guestName || 'Visitante',
       sender: message.sender,
       senderName: message.senderName,
@@ -460,6 +482,7 @@ async function startAnonymousChatSession({
     host: {
       id: host._id?.toString?.() || host._id || null,
       name: host.name || null,
+      visitorDisplayName: host.visitorDisplayName || null,
       email: host.email || null,
       qrCode: host.qrCode || null,
     },
