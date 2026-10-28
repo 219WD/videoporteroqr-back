@@ -24,6 +24,7 @@ const {
   validatePassword,
   validateQrCode,
 } = require('../utils/validation');
+const { getEffectiveVisitorStatus } = require('../utils/visitorAvailability');
 
 function createToken(user, rememberMe = false) {
   return jwt.sign(
@@ -57,17 +58,6 @@ function buildHostQrUrl(qrCode) {
   return `${baseUrl}/qr/${encodeURIComponent(qrCode)}`;
 }
 
-function getEffectiveVisitorStatus(user) {
-  const manualStatus = user.visitorStatus || 'available';
-  if (manualStatus !== 'available') return manualStatus;
-  const schedule = Array.isArray(user.visitorSchedule) ? user.visitorSchedule : [];
-  if (schedule.length === 0) return 'available';
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
-  const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.find((part) => part.type === 'weekday')?.value || '');
-  const current = `${parts.find((part) => part.type === 'hour')?.value || '00'}:${parts.find((part) => part.type === 'minute')?.value || '00'}`;
-  const today = schedule.find((item) => item.day === weekday);
-  return today?.enabled && current >= today.start && current <= today.end ? 'available' : 'off_hours';
-}
 
 function clearEmailOtp(user) {
   user.emailOtpHash = null;

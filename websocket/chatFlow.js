@@ -6,6 +6,7 @@ const { CHAT_SESSION_TIMEOUT_MS } = require('../config/env');
 const { dispatchNotification } = require('../services/pushNotifications');
 const { validateMessage, validateName, validateQrCode } = require('../utils/validation');
 const { createScopedLogger } = require('../utils/logger');
+const { getEffectiveVisitorStatus } = require('../utils/visitorAvailability');
 
 const log = createScopedLogger('websocket:chat');
 
@@ -124,7 +125,7 @@ async function resolveHostFromConversation(conversation, signal = null) {
   throwIfAborted(signal);
 
   const host = await User.findById(hostId)
-    .select('name email _id qrCode visitorDisplayName')
+    .select('name email _id qrCode visitorDisplayName visitorWelcomeMessage visitorStatus visitorSchedule')
     .setOptions({
       signal,
       maxTimeMS: 5000,
@@ -139,6 +140,10 @@ async function resolveHostFromConversation(conversation, signal = null) {
     id: host._id?.toString?.() || host._id || null,
     name: host.name || null,
     visitorDisplayName: host.visitorDisplayName || null,
+    visitorWelcomeMessage: host.visitorWelcomeMessage || null,
+    visitorStatus: host.visitorStatus || 'available',
+    effectiveVisitorStatus: getEffectiveVisitorStatus(host),
+    visitorSchedule: host.visitorSchedule || [],
     email: host.email || null,
     qrCode: host.qrCode || null,
   };
@@ -244,6 +249,21 @@ async function storeChatMessage({
   }
 
   throwIfAborted(signal);
+
+  if (cleanSender === 'guest' && hostId) {
+    const host = await User.findById(hostId)
+      .select('visitorStatus visitorSchedule')
+      .setOptions({ signal, maxTimeMS: 5000 })
+      .lean();
+    const effectiveVisitorStatus = getEffectiveVisitorStatus(host);
+    if (effectiveVisitorStatus !== 'available') {
+      const unavailableError = new Error(effectiveVisitorStatus === 'off_hours'
+        ? 'Este timbre está fuera de horario'
+        : 'Este timbre no está disponible en este momento');
+      unavailableError.code = 'visitor_unavailable';
+      throw unavailableError;
+    }
+  }
 
   const conversation = await ensureConversation({
     conversationId: cleanConversationId,
@@ -359,7 +379,7 @@ async function findHostByQr(qrCode, signal = null) {
   throwIfAborted(signal);
 
   return User.findOne({ qrCode: cleanQrCode, role: 'host' })
-    .select('name email _id qrCode')
+    .select('name email _id qrCode visitorDisplayName visitorWelcomeMessage visitorStatus visitorSchedule')
     .setOptions({
       signal,
       maxTimeMS: 5000,
@@ -465,6 +485,15 @@ async function startAnonymousChatSession({
     throw error;
   }
 
+  const effectiveVisitorStatus = getEffectiveVisitorStatus(host);
+  if (effectiveVisitorStatus !== 'available') {
+    const unavailableError = new Error(effectiveVisitorStatus === 'off_hours'
+      ? 'Este timbre está fuera de horario'
+      : 'Este timbre no está disponible en este momento');
+    unavailableError.code = 'visitor_unavailable';
+    throw unavailableError;
+  }
+
   const conversationId = `call-${randomUUID()}`;
   const result = await storeChatMessage({
     conversationId,
@@ -483,6 +512,10 @@ async function startAnonymousChatSession({
       id: host._id?.toString?.() || host._id || null,
       name: host.name || null,
       visitorDisplayName: host.visitorDisplayName || null,
+      visitorWelcomeMessage: host.visitorWelcomeMessage || null,
+      visitorStatus: host.visitorStatus || 'available',
+      effectiveVisitorStatus,
+      visitorSchedule: host.visitorSchedule || [],
       email: host.email || null,
       qrCode: host.qrCode || null,
     },
